@@ -1,0 +1,18 @@
+[Unit]
+Description=Pomogator API
+After=network.target
+
+[Service]
+Type=simple
+User=pomogator
+Group=pomogator
+WorkingDirectory=/opt/pomogator/server
+EnvironmentFile=/opt/pomogator/server/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
