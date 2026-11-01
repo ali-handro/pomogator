@@ -34,15 +34,25 @@ function startTimer() {
   clearInterval(state.timer);
   state.left = QUESTION_SECONDS;
   renderTimer();
+  $('btnStart').textContent = 'Заново';
 
   state.timer = setInterval(() => {
     state.left -= 1;
     if (state.left <= 0) {
       state.left = 0;
       clearInterval(state.timer);
+      $('btnStart').textContent = 'Старт';
     }
     renderTimer();
   }, 1000);
+}
+
+/** Таймер сбрасывается, но не идёт: отсчёт начинается по кнопке «Старт». */
+function resetTimer() {
+  clearInterval(state.timer);
+  state.left = QUESTION_SECONDS;
+  renderTimer();
+  $('btnStart').textContent = 'Старт';
 }
 
 function showQuestion() {
@@ -70,7 +80,7 @@ function showQuestion() {
   hints.hidden = true;
   $('btnHints').textContent = 'Показать опорные пункты';
 
-  startTimer();
+  resetTimer();
 }
 
 function loadCategory(id) {
