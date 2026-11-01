@@ -32,10 +32,20 @@ function formatTime(seconds) {
   return `${mm}:${ss}`;
 }
 
+function meetingsDir() {
+  return path.join(app.getPath('userData'), 'meetings');
+}
+
+/** Не даём выйти за пределы папки встреч через имя файла. */
+function safeFile(name) {
+  const base = path.basename(String(name || ''));
+  return base.endsWith('.json') ? base : `${base}.json`;
+}
+
 function createMeetingStore({ getSettings, streamChat, providerConfig }) {
   function save(payload) {
     try {
-      const dir = path.join(app.getPath('userData'), 'meetings');
+      const dir = meetingsDir();
       fs.mkdirSync(dir, { recursive: true });
 
       const startedAt = Number(payload && payload.startedAt) || Date.now();
@@ -196,7 +206,73 @@ function createMeetingStore({ getSettings, streamChat, providerConfig }) {
     }
   }
 
-  return { save, summarize, exportMarkdown };
+  /** Список сохранённых встреч: новые сверху, без полного текста. */
+  function list() {
+    try {
+      const dir = meetingsDir();
+      if (!fs.existsSync(dir)) return { ok: true, items: [] };
+
+      const items = [];
+
+      for (const name of fs.readdirSync(dir)) {
+        if (!name.endsWith('.json')) continue;
+
+        try {
+          const data = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+          const entries = Array.isArray(data.entries) ? data.entries : [];
+
+          items.push({
+            file: name,
+            startedAt: Number(data.startedAt) || 0,
+            duration: Number(data.duration) || 0,
+            entries: entries.length,
+            summary: String(data.summary || ''),
+            preview: entries.length ? String(entries[0].text || '') : '',
+          });
+        } catch {
+          /* битый файл просто пропускаем */
+        }
+      }
+
+      items.sort((a, b) => b.startedAt - a.startedAt);
+      return { ok: true, items };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  /** Полная расшифровка одной встречи. */
+  function read(name) {
+    try {
+      const file = path.join(meetingsDir(), safeFile(name));
+      if (!fs.existsSync(file)) return { ok: false, error: 'Запись не найдена' };
+
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return {
+        ok: true,
+        startedAt: Number(data.startedAt) || 0,
+        duration: Number(data.duration) || 0,
+        summary: String(data.summary || ''),
+        entries: Array.isArray(data.entries) ? data.entries : [],
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  function remove(name) {
+    try {
+      const file = path.join(meetingsDir(), safeFile(name));
+      if (!fs.existsSync(file)) return { ok: false, error: 'Запись не найдена' };
+
+      fs.unlinkSync(file);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  return { save, summarize, exportMarkdown, list, read, remove };
 }
 
 module.exports = { createMeetingStore };

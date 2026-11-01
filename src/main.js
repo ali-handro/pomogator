@@ -535,7 +535,7 @@ function createSettings() {
     height,
     x: Math.round(work.x + (work.width - width) / 2),
     y: Math.round(work.y + (work.height - height) / 2),
-    minWidth: 520,
+    minWidth: 640,
     minHeight: 600,
     // Два окна поверх всех (оверлей + настройки) на Windows дерутся за
     // z-порядок и окно настроек мерцает при перетаскивании. Настройки
@@ -1588,6 +1588,9 @@ function registerIpc() {
   ipcMain.handle('meeting:save', (_event, payload) => meetings.save(payload));
   ipcMain.handle('meeting:summary', (_event, payload) => meetings.summarize(payload));
   ipcMain.handle('meeting:export', (_event, payload) => meetings.exportMarkdown(payload));
+  ipcMain.handle('meetings:list', () => meetings.list());
+  ipcMain.handle('meetings:read', (_event, name) => meetings.read(name));
+  ipcMain.handle('meetings:remove', (_event, name) => meetings.remove(name));
 
   ipcMain.on('app:quit', () => {
     isQuitting = true;
@@ -1616,9 +1619,9 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  /**
- * Приложение переименовано из Suflyor: переносим настройки и локальные модели
- * из старой папки, чтобы ключи и скачанный whisper не пропали.
+/**
+ * Приложение переименовано из Suflyor: переносим настройки, локальные модели
+ * и записи встреч из старой папки, чтобы ничего не пропало.
  */
 function migrateLegacyData() {
   try {
@@ -1626,17 +1629,31 @@ function migrateLegacyData() {
     const legacy = path.join(app.getPath('appData'), 'Suflyor');
 
     if (!fs.existsSync(legacy)) return;
-    if (fs.existsSync(path.join(target, 'settings.json'))) return;
 
     fs.mkdirSync(target, { recursive: true });
 
-    for (const name of ['settings.json', 'whisper']) {
-      const from = path.join(legacy, name);
-      if (!fs.existsSync(from)) continue;
-      fs.cpSync(from, path.join(target, name), { recursive: true });
+    // Настройки и модели — только если своих ещё нет.
+    if (!fs.existsSync(path.join(target, 'settings.json'))) {
+      for (const name of ['settings.json', 'whisper']) {
+        const from = path.join(legacy, name);
+        if (!fs.existsSync(from)) continue;
+        fs.cpSync(from, path.join(target, name), { recursive: true });
+      }
+      console.log('[migrate] настройки перенесены из Suflyor');
     }
 
-    console.log('[migrate] данные перенесены из Suflyor');
+    // Встречи добавляем к своим, не затирая уже записанные.
+    const legacyMeetings = path.join(legacy, 'meetings');
+    if (fs.existsSync(legacyMeetings)) {
+      const targetMeetings = path.join(target, 'meetings');
+      fs.mkdirSync(targetMeetings, { recursive: true });
+
+      for (const name of fs.readdirSync(legacyMeetings)) {
+        const to = path.join(targetMeetings, name);
+        if (fs.existsSync(to)) continue;
+        fs.copyFileSync(path.join(legacyMeetings, name), to);
+      }
+    }
   } catch (err) {
     console.warn('[migrate]', err.message);
   }

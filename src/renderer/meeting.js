@@ -17,6 +17,7 @@ const state = {
   ctx: null,
   streams: [],
   channels: null,
+  loadedFile: null,
 };
 
 /* ------------------------------------------------------------------ */
@@ -316,6 +317,9 @@ function connect(stream, channel) {
 async function start() {
   if (state.running) return;
 
+  // Открытую прошлую запись не дописываем — начинаем новую встречу.
+  if (state.loadedFile) clear();
+
   let micStream = null;
   let sysStream = null;
 
@@ -368,6 +372,7 @@ async function start() {
 
   document.body.classList.add('recording');
   $('recordLabel').textContent = 'Остановить';
+  $('btnRecords').disabled = true;
   setStatus('Идёт запись — говорите как обычно');
 
   if (window.api.setMeetingRecording) window.api.setMeetingRecording(true);
@@ -433,6 +438,7 @@ async function stop() {
 
   document.body.classList.remove('recording');
   $('recordLabel').textContent = 'Записать';
+  $('btnRecords').disabled = false;
   $('timer').textContent = formatTime(state.elapsed);
   setStatus('Сохраняю расшифровку…');
 
@@ -471,10 +477,11 @@ async function saveMeeting() {
 function clear() {
   state.entries = [];
   state.summary = '';
+  state.loadedFile = null;
   $('summaryBox').hidden = true;
   $('summaryText').textContent = '';
   $('transcript').innerHTML =
-    '<p class="empty" id="empty">Нажмите «Записать» — Суфлёр запишет микрофон и звук системы, а здесь появится расшифровка с разделением на вас и собеседника. Аудио нигде не сохраняется.</p>';
+    '<p class="empty" id="empty">Нажмите «Записать» — Помогатор запишет микрофон и звук системы, а здесь появится расшифровка с разделением на вас и собеседника. Аудио нигде не сохраняется.</p>';
   $('btnExport').disabled = true;
   $('btnClear').disabled = true;
   $('btnSummary').disabled = true;
@@ -502,6 +509,164 @@ async function exportMarkdown() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Записи прошлых встреч                                              */
+/* ------------------------------------------------------------------ */
+
+let recordsCache = [];
+
+function formatDate(ms) {
+  return new Date(ms).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+async function openRecords() {
+  if (state.running) return;
+
+  $('recordsPanel').hidden = false;
+  $('recordsSearch').value = '';
+  await loadRecords();
+  $('recordsSearch').focus();
+}
+
+async function loadRecords() {
+  const list = $('recordsList');
+  list.innerHTML = '<div class="records-empty">Загружаю…</div>';
+
+  try {
+    const result = await window.api.meetingsList();
+    recordsCache = (result && result.items) || [];
+    renderRecords();
+  } catch (err) {
+    list.innerHTML = `<div class="records-empty">Не удалось прочитать записи: ${err.message}</div>`;
+  }
+}
+
+function renderRecords() {
+  const list = $('recordsList');
+  const query = $('recordsSearch').value.trim().toLowerCase();
+  list.innerHTML = '';
+
+  const items = recordsCache.filter((item) => {
+    if (!query) return true;
+    return (
+      String(item.preview || '').toLowerCase().includes(query) ||
+      String(item.summary || '').toLowerCase().includes(query) ||
+      formatDate(item.startedAt).toLowerCase().includes(query)
+    );
+  });
+
+  if (!items.length) {
+    const text = recordsCache.length
+      ? 'Ничего не найдено'
+      : 'Пока нет сохранённых встреч. Запишите первую — она появится здесь.';
+    list.innerHTML = `<div class="records-empty">${text}</div>`;
+    return;
+  }
+
+  for (const item of items) {
+    const row = document.createElement('div');
+    row.className = 'record-row';
+
+    const main = document.createElement('div');
+    main.className = 'record-main';
+
+    const date = document.createElement('div');
+    date.className = 'record-date';
+    date.textContent = formatDate(item.startedAt);
+
+    const meta = document.createElement('div');
+    meta.className = 'record-meta';
+    const parts = [formatTime(item.duration), `${item.entries} реплик`];
+    if (item.summary) parts.push('есть выжимка');
+    meta.textContent = parts.join(' · ');
+
+    const preview = document.createElement('div');
+    preview.className = 'record-preview';
+    preview.textContent = item.preview || 'Без текста';
+
+    main.append(date, meta, preview);
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'record-del';
+    del.textContent = '✕';
+    del.title = 'Удалить запись';
+    del.addEventListener('click', (event) => {
+      event.stopPropagation();
+      removeRecord(item);
+    });
+
+    row.append(main, del);
+    row.addEventListener('click', () => openRecord(item.file));
+    list.appendChild(row);
+  }
+}
+
+async function openRecord(file) {
+  try {
+    const result = await window.api.meetingRead(file);
+
+    if (!result || !result.ok) {
+      setStatus((result && result.error) || 'Не удалось открыть запись');
+      return;
+    }
+
+    state.entries = result.entries;
+    state.summary = result.summary;
+    state.startedAt = result.startedAt;
+    state.elapsed = result.duration;
+    state.loadedFile = file;
+
+    $('timer').textContent = formatTime(result.duration);
+
+    const transcript = $('transcript');
+    transcript.innerHTML = '';
+
+    if (!state.entries.length) {
+      transcript.innerHTML = '<p class="empty">В этой записи нет расшифровки.</p>';
+    } else {
+      for (const entry of state.entries) renderEntry(entry);
+    }
+
+    if (state.summary) renderSummary(state.summary);
+    else $('summaryBox').hidden = true;
+
+    $('btnExport').disabled = !state.entries.length;
+    $('btnClear').disabled = !state.entries.length;
+    $('btnSummary').disabled = !state.entries.length;
+
+    $('recordsPanel').hidden = true;
+    setStatus(`Открыта запись от ${formatDate(result.startedAt)}`);
+  } catch (err) {
+    setStatus(`Записи: ${err.message}`);
+  }
+}
+
+async function removeRecord(item) {
+  const ok = window.confirm(`Удалить запись от ${formatDate(item.startedAt)}? Это необратимо.`);
+  if (!ok) return;
+
+  try {
+    const result = await window.api.meetingRemove(item.file);
+
+    if (result && result.ok) {
+      recordsCache = recordsCache.filter((row) => row.file !== item.file);
+      renderRecords();
+      setStatus('Запись удалена');
+    } else {
+      setStatus((result && result.error) || 'Не удалось удалить запись');
+    }
+  } catch (err) {
+    setStatus(`Удаление: ${err.message}`);
+  }
+}
+
 function boot() {
   $('btnRecord').addEventListener('click', () => {
     if (state.running) stop();
@@ -515,6 +680,12 @@ function boot() {
   $('btnSummaryClose').addEventListener('click', () => {
     $('summaryBox').hidden = true;
   });
+
+  $('btnRecords').addEventListener('click', openRecords);
+  $('btnRecordsClose').addEventListener('click', () => {
+    $('recordsPanel').hidden = true;
+  });
+  $('recordsSearch').addEventListener('input', renderRecords);
 
   window.addEventListener('beforeunload', () => {
     if (state.running) {

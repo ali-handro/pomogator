@@ -57,15 +57,33 @@
     <main class="transcript-wrap">
       <div class="transcript" id="transcript">
         <p class="empty" id="empty">
-          Нажмите «Записать» — Суфлёр запишет микрофон и звук системы, а здесь появится
+          Нажмите «Записать» — Помогатор запишет микрофон и звук системы, а здесь появится
           расшифровка с разделением на вас и собеседника. Аудио нигде не сохраняется.
         </p>
       </div>
+
+      <section class="records" id="recordsPanel" hidden>
+        <header class="records-head">
+          <span>Записи встреч</span>
+          <input
+            type="search"
+            id="recordsSearch"
+            placeholder="Поиск по тексту…"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button type="button" class="icon" id="btnRecordsClose" title="Назад к расшифровке">
+            ✕
+          </button>
+        </header>
+        <div class="records-list" id="recordsList"></div>
+      </section>
     </main>
 
     <footer class="foot">
       <span class="status" id="status"></span>
       <div class="actions">
+        <button type="button" class="ghost" id="btnRecords">Записи</button>
         <button type="button" class="ghost" id="btnSummary" disabled>Сделать выжимку</button>
         <button type="button" class="ghost" id="btnExport" disabled>Экспорт .md</button>
         <button type="button" class="ghost" id="btnClear" disabled>Очистить</button>

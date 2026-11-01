@@ -193,6 +193,7 @@ select {
 }
 
 .transcript-wrap {
+  position: relative;
   flex: 1;
   min-height: 0;
   background: var(--card);
@@ -285,6 +286,127 @@ select {
 
 .entry .text {
   flex: 1;
+}
+
+/* ---------- записи встреч ---------- */
+
+.records {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+}
+
+.records[hidden] {
+  display: none;
+}
+
+.records-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px 9px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.records-head > span {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.records-head input[type='search'] {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  outline: none;
+}
+
+.records-head input[type='search']:focus {
+  border-color: rgba(110, 168, 255, 0.55);
+}
+
+.records-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.record-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.record-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--line);
+}
+
+.record-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-date {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.record-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.record-preview {
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.record-del {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  color: var(--dim);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.record-del:hover {
+  color: var(--err);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.records-empty {
+  padding: 26px 18px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--dim);
+  text-align: center;
 }
 
 .foot {
