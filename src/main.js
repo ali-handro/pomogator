@@ -917,17 +917,28 @@ function registerShortcuts() {
   const failed = [];
 
   const bind = (accelerator, handler, label) => {
-    if (!accelerator) return;
+    if (!accelerator) return false;
     try {
       const ok = globalShortcut.register(accelerator, handler);
       if (!ok) {
         failed.push({ accelerator, label });
         console.warn('[hotkey] busy:', accelerator);
+        return false;
       }
+      return true;
     } catch (err) {
       failed.push({ accelerator, label });
       console.warn('[hotkey] invalid:', accelerator, err.message);
+      return false;
     }
+  };
+
+  /** Занимаем первую свободную комбинацию из списка и возвращаем её. */
+  const bindFirst = (accelerators, handler, label) => {
+    for (const accelerator of accelerators) {
+      if (accelerator && bind(accelerator, handler, label)) return accelerator;
+    }
+    return null;
   };
 
   const listen = () => sendToOverlay('action:listen');
@@ -946,24 +957,29 @@ function registerShortcuts() {
 
   bind(settings.hotkeys.settings, createSettings, 'Настройки');
 
-  const captureHotkey = settings.hotkeys.capture || 'Alt+C';
-  bind(captureHotkey, () => sendToOverlay('action:capture'), 'Скриншот задачи');
-  if (captureHotkey !== 'Control+Shift+C') {
-    bind('Control+Shift+C', () => sendToOverlay('action:capture'), 'Скриншот задачи (резерв)');
-  }
+  const captureHotkey = bindFirst(
+    [settings.hotkeys.capture, 'Alt+C', 'Control+Shift+C'],
+    () => sendToOverlay('action:capture'),
+    'Скриншот задачи'
+  );
 
-  const reviewHotkey = settings.hotkeys.review || 'Alt+R';
-  bind(reviewHotkey, () => sendToOverlay('action:review'), 'Код-ревью по скриншоту');
-  if (reviewHotkey !== 'Control+Shift+Alt+R') {
-    bind('Control+Shift+Alt+R', () => sendToOverlay('action:review'), 'Код-ревью (резерв)');
-  }
+  const reviewHotkey = bindFirst(
+    [settings.hotkeys.review, 'Alt+R', 'Control+Alt+R', 'Control+Shift+Alt+R'],
+    () => sendToOverlay('action:review'),
+    'Код-ревью по скриншоту'
+  );
 
   // Перемотка ответов работает всегда, независимо от положения курсора.
   bind('Control+Shift+Left', () => sendToOverlay('action:history-prev'), 'Прошлый ответ');
   bind('Control+Shift+Right', () => sendToOverlay('action:history-next'), 'Следующий ответ');
   bind('Control+Shift+Down', () => sendToOverlay('action:history-latest'), 'К актуальному ответу');
 
-  hotkeyStatus = { failed, listen: settings.hotkeys.listen };
+  hotkeyStatus = {
+    failed,
+    listen: settings.hotkeys.listen,
+    capture: captureHotkey,
+    review: reviewHotkey,
+  };
   if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.webContents.send('hotkeys:status', hotkeyStatus);
   }
@@ -1703,6 +1719,12 @@ if (isDev) {
     },
     get settings() {
       return settings;
+    },
+    get captureWin() {
+      return captureWin;
+    },
+    get captureShot() {
+      return captureShot;
     },
     warmUp,
   };

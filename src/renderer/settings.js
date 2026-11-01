@@ -340,11 +340,30 @@ function bindHotkeyField() {
   });
 }
 
+function renderHotkeyKbds(rowId, accelerator) {
+  const row = $(rowId);
+  if (!row || !accelerator) return;
+
+  const label = row.querySelector('.key-label');
+  row.querySelectorAll('kbd').forEach((kbd) => kbd.remove());
+
+  for (const part of formatAccelerator(accelerator).split('+')) {
+    const kbd = document.createElement('kbd');
+    kbd.textContent = part;
+    row.insertBefore(kbd, label);
+  }
+}
+
 function renderHotkeyStatus(status) {
   const out = $('listenHotkeyStatus');
   if (!out) return;
 
   lastHotkeyStatus = status || { failed: [] };
+
+  // Скриншот и код-ревью могут переехать на резервную комбинацию,
+  // если основную заняла другая программа — показываем фактическую.
+  renderHotkeyKbds('captureKeysRow', lastHotkeyStatus.capture);
+  renderHotkeyKbds('reviewKeysRow', lastHotkeyStatus.review);
   const listen = (settings.hotkeys && settings.hotkeys.listen) || 'Control+Space';
   const failed = lastHotkeyStatus.failed || [];
   const busy = failed.find((item) => item.accelerator === listen);
