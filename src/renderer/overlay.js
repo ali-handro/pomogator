@@ -34,6 +34,7 @@ const el = {
   btnHistLatest: document.getElementById('btnHistLatest'),
   btnJumpLatest: document.getElementById('btnJumpLatest'),
   btnCapture: document.getElementById('btnCapture'),
+  btnReview: document.getElementById('btnReview'),
   histCount: document.getElementById('histCount'),
   btnRegen: document.getElementById('btnRegen'),
   btnClear: document.getElementById('btnClear'),
@@ -367,11 +368,12 @@ async function ask(question, options = {}) {
   }
 }
 
-async function solveScreenshot() {
+async function solveScreenshot(mode = 'solve') {
   if (!hasApi) return;
 
+  const review = mode === 'review';
   const entry = {
-    question: '📷 Задача со скриншота',
+    question: review ? '🔍 Код-ревью со скриншота' : '📷 Задача со скриншота',
     answer: '',
     latency: '',
     state: 'pending',
@@ -390,7 +392,7 @@ async function solveScreenshot() {
   askStartedAt = performance.now();
 
   try {
-    const result = await window.api.captureSolve();
+    const result = await window.api.captureSolve(mode);
     if (!result) return;
 
     if (result.cancelled) {
@@ -1056,7 +1058,8 @@ function bindUi() {
   el.btnRegen.addEventListener('click', () => {
     if (lastQuestion) ask(lastQuestion, { manual: true });
   });
-  if (el.btnCapture) el.btnCapture.addEventListener('click', solveScreenshot);
+  if (el.btnCapture) el.btnCapture.addEventListener('click', () => solveScreenshot('solve'));
+  if (el.btnReview) el.btnReview.addEventListener('click', () => solveScreenshot('review'));
   el.btnClear.addEventListener('click', clearCurrent);
   el.btnHide.addEventListener('click', () => {
     if (hasApi) window.api.hideOverlay();
@@ -1160,7 +1163,8 @@ function bindIpc() {
     if (lastQuestion) ask(lastQuestion, { manual: true });
   });
   window.api.onAction('clear', () => clearCurrent());
-  window.api.onAction('capture', solveScreenshot);
+  window.api.onAction('capture', () => solveScreenshot('solve'));
+  window.api.onAction('review', () => solveScreenshot('review'));
   window.api.onAction('listen', () => setListening(!stt.listening));
   window.api.onAction('history-prev', prevAnswer);
   window.api.onAction('history-next', nextAnswer);

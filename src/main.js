@@ -100,6 +100,7 @@ const DEFAULT_SETTINGS = {
     listen: 'Control+Space',
     settings: 'Control+Shift+S',
     capture: 'Alt+C',
+    review: 'Alt+R',
   },
 };
 
@@ -951,6 +952,12 @@ function registerShortcuts() {
     bind('Control+Shift+C', () => sendToOverlay('action:capture'), 'Скриншот задачи (резерв)');
   }
 
+  const reviewHotkey = settings.hotkeys.review || 'Alt+R';
+  bind(reviewHotkey, () => sendToOverlay('action:review'), 'Код-ревью по скриншоту');
+  if (reviewHotkey !== 'Control+Shift+Alt+R') {
+    bind('Control+Shift+Alt+R', () => sendToOverlay('action:review'), 'Код-ревью (резерв)');
+  }
+
   // Перемотка ответов работает всегда, независимо от положения курсора.
   bind('Control+Shift+Left', () => sendToOverlay('action:history-prev'), 'Прошлый ответ');
   bind('Control+Shift+Right', () => sendToOverlay('action:history-next'), 'Следующий ответ');
@@ -1073,21 +1080,39 @@ function cropSelection(rect) {
   return image.toJPEG(88).toString('base64');
 }
 
-const VISION_PROMPT = [
-  'Ты — помощник на техническом собеседовании.',
-  'На скриншоте условие задачи и, возможно, уже начатый код.',
-  'Сначала одной строкой скажи, что требуется.',
-  'Затем дай рабочее решение с отступами.',
-  'В конце одной строкой укажи сложность.',
-  'Не используй markdown, заголовки и обратные кавычки.',
-  'Пиши по-русски, кратко, без воды.',
-].join('\n');
+const VISION_MODES = {
+  solve: {
+    prompt: [
+      'Ты — помощник на техническом собеседовании.',
+      'На скриншоте условие задачи и, возможно, уже начатый код.',
+      'Сначала одной строкой скажи, что требуется.',
+      'Затем дай рабочее решение с отступами.',
+      'В конце одной строкой укажи сложность.',
+      'Не используй markdown, заголовки и обратные кавычки.',
+      'Пиши по-русски, кратко, без воды.',
+    ].join('\n'),
+    ask: 'Реши задачу со скриншота.',
+  },
+  review: {
+    prompt: [
+      'Ты — опытный ревьюер на техническом собеседовании.',
+      'На скриншоте чужой код, который просят разобрать.',
+      'Дай 3–5 замечаний, каждое с новой строки: что не так и как исправить.',
+      'Смотри на баги, edge-cases, производительность и читаемость.',
+      'Где можешь — назови функцию или строку, к которой относится замечание.',
+      'В конце одной строкой — общий вердикт: можно ли принимать код.',
+      'Не используй markdown, заголовки и обратные кавычки. По-русски, кратко.',
+    ].join('\n'),
+    ask: 'Сделай код-ревью по скриншоту.',
+  },
+};
 
-async function solveScreenshot(base64, controller) {
+async function solveScreenshot(base64, controller, mode = 'solve') {
   const providerId = settings.provider || 'cloudflare';
   const provider = providerConfig(providerId);
   const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
   const model = visionModel(providerId, settings.model);
+  const variant = VISION_MODES[mode] || VISION_MODES.solve;
 
   if (!provider.noKey && !apiKey) throw new Error('Нет ключа для модели');
   if (provider.needsAccount && !settings.cloudflareAccount) {
@@ -1100,11 +1125,11 @@ async function solveScreenshot(base64, controller) {
     accountId: settings.cloudflareAccount || '',
     model,
     messages: [
-      { role: 'system', content: VISION_PROMPT },
+      { role: 'system', content: variant.prompt },
       {
         role: 'user',
         content: [
-          { type: 'text', text: 'Реши задачу со скриншота.' },
+          { type: 'text', text: variant.ask },
           { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
         ],
       },
@@ -1406,7 +1431,8 @@ function registerIpc() {
 
   ipcMain.on('capture:cancel', () => finishCapture({ ok: false, cancelled: true }));
 
-  ipcMain.handle('vision:capture', async () => {
+  ipcMain.handle('vision:capture', async (_event, payload) => {
+    const mode = payload && payload.mode === 'review' ? 'review' : 'solve';
     const shot = await captureArea();
     if (!shot.ok) return { ok: false, cancelled: true };
 
@@ -1416,7 +1442,7 @@ function registerIpc() {
 
     sendToOverlay('llm:start');
     try {
-      await solveScreenshot(shot.base64, controller);
+      await solveScreenshot(shot.base64, controller, mode);
       sendToOverlay('llm:done');
       return { ok: true };
     } catch (err) {
