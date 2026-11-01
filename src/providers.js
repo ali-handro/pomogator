@@ -146,6 +146,26 @@ function reasoningTweaks(providerId, model) {
   return null;
 }
 
+/**
+ * Модели, которые понимают картинки (проверено на скриншотах с кодом).
+ * Нужны для режима «решить задачу со скриншота».
+ */
+const VISION_MODELS = new Set([
+  'glm-5.3-flash',
+  'qwen3.8-flash',
+  'kimi-k3',
+  'mimo-v2.6-flash',
+  'minimax-m3.1-flash',
+]);
+
+function visionModel(providerId, model) {
+  const id = String(model || '');
+  if (providerId === 'opencode') {
+    return VISION_MODELS.has(id) ? id : 'glm-5.3-flash';
+  }
+  return id || providerConfig(providerId).defaultModel;
+}
+
 function resolveBaseUrl(provider, accountId) {
   const id = String(accountId || '').trim();
   return provider.baseUrl.replace('{accountId}', id);
@@ -303,4 +323,4 @@ async function streamChat({
   }
 }
 
-module.exports = { PROVIDERS, providerConfig, resolveBaseUrl, streamChat };
+module.exports = { PROVIDERS, providerConfig, resolveBaseUrl, streamChat, visionModel, VISION_MODELS };

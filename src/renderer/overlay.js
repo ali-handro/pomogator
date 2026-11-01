@@ -33,6 +33,7 @@ const el = {
   btnHistNext: document.getElementById('btnHistNext'),
   btnHistLatest: document.getElementById('btnHistLatest'),
   btnJumpLatest: document.getElementById('btnJumpLatest'),
+  btnCapture: document.getElementById('btnCapture'),
   histCount: document.getElementById('histCount'),
   btnRegen: document.getElementById('btnRegen'),
   btnClear: document.getElementById('btnClear'),
@@ -360,6 +361,60 @@ async function ask(question, options = {}) {
     if (!result || result.ok || result.aborted) return;
     if (answerHistory[historyIndex] === entry) {
       setState('error', result.error || 'Не удалось получить ответ');
+    }
+  } catch (err) {
+    if (answerHistory[historyIndex] === entry) setState('error', err.message);
+  }
+}
+
+async function solveScreenshot() {
+  if (!hasApi) return;
+
+  const entry = {
+    question: '📷 Задача со скриншота',
+    answer: '',
+    latency: '',
+    state: 'pending',
+    error: '',
+  };
+
+  answerHistory.push(entry);
+  if (answerHistory.length > MAX_HISTORY) answerHistory.shift();
+
+  activeEntry = entry;
+  historyIndex = answerHistory.length - 1;
+  lastQuestion = '';
+  renderEntry(entry);
+  renderHistoryControls();
+  setState('thinking', 'Смотрю экран…');
+  askStartedAt = performance.now();
+
+  try {
+    const result = await window.api.captureSolve();
+    if (!result) return;
+
+    if (result.cancelled) {
+      // Выделение отменили — убираем пустую запись из истории.
+      const at = answerHistory.indexOf(entry);
+      if (at !== -1) answerHistory.splice(at, 1);
+
+      activeEntry = null;
+      historyIndex = Math.min(historyIndex, answerHistory.length - 1);
+
+      if (historyIndex >= 0) {
+        renderEntry(answerHistory[historyIndex]);
+        restoreStatus(answerHistory[historyIndex], true);
+      } else {
+        clearAnswer();
+        setQuestion('');
+        resumeState();
+      }
+      renderHistoryControls();
+      return;
+    }
+
+    if (!result.ok && !result.aborted) {
+      if (answerHistory[historyIndex] === entry) setState('error', result.error || 'Не удалось');
     }
   } catch (err) {
     if (answerHistory[historyIndex] === entry) setState('error', err.message);
@@ -1001,6 +1056,7 @@ function bindUi() {
   el.btnRegen.addEventListener('click', () => {
     if (lastQuestion) ask(lastQuestion, { manual: true });
   });
+  if (el.btnCapture) el.btnCapture.addEventListener('click', solveScreenshot);
   el.btnClear.addEventListener('click', clearCurrent);
   el.btnHide.addEventListener('click', () => {
     if (hasApi) window.api.hideOverlay();
@@ -1104,6 +1160,7 @@ function bindIpc() {
     if (lastQuestion) ask(lastQuestion, { manual: true });
   });
   window.api.onAction('clear', () => clearCurrent());
+  window.api.onAction('capture', solveScreenshot);
   window.api.onAction('listen', () => setListening(!stt.listening));
   window.api.onAction('history-prev', prevAnswer);
   window.api.onAction('history-next', nextAnswer);

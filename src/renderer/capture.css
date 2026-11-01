@@ -1,0 +1,41 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: rgba(8, 12, 20, 0.45);
+  cursor: crosshair;
+  user-select: none;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.sel {
+  position: absolute;
+  border: 2px solid #6ea8ff;
+  border-radius: 3px;
+  background: rgba(110, 168, 255, 0.08);
+  box-shadow: 0 0 0 9999px rgba(8, 12, 20, 0.35);
+  pointer-events: none;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(12, 16, 24, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #dfe7f5;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  white-space: nowrap;
+}

@@ -17,7 +17,7 @@ const {
 const path = require('path');
 const fs = require('fs');
 
-const { PROVIDERS, providerConfig, resolveBaseUrl, streamChat } = require('./providers');
+const { PROVIDERS, providerConfig, resolveBaseUrl, streamChat, visionModel } = require('./providers');
 const { sttConfig, transcribe } = require('./stt');
 const localStt = require('./localStt');
 const { buildMessages } = require('./prompt');
@@ -99,6 +99,7 @@ const DEFAULT_SETTINGS = {
     clear: 'Control+Shift+X',
     listen: 'Control+Space',
     settings: 'Control+Shift+S',
+    capture: 'Alt+C',
   },
 };
 
@@ -121,6 +122,12 @@ function loadSettings() {
     settings.keys = { ...(settings.keys || {}) };
     if (parsed.apiKey && !settings.keys.groq) settings.keys.groq = parsed.apiKey;
     if (!settings.provider) settings.provider = DEFAULT_SETTINGS.provider;
+
+    // Старое значение из ранних версий: горячая клавиша скриншота была
+    // заготовкой и нигде не настраивалась — переводим на актуальную.
+    if (!settings.hotkeys.capture || settings.hotkeys.capture === 'Control+Shift+H') {
+      settings.hotkeys.capture = DEFAULT_SETTINGS.hotkeys.capture;
+    }
 
     // Одноразовый переход со старой комбинации паузы на Ctrl+Space.
     if (!settings.hotkeysVersion) {
@@ -938,6 +945,12 @@ function registerShortcuts() {
 
   bind(settings.hotkeys.settings, createSettings, 'Настройки');
 
+  const captureHotkey = settings.hotkeys.capture || 'Alt+C';
+  bind(captureHotkey, () => sendToOverlay('action:capture'), 'Скриншот задачи');
+  if (captureHotkey !== 'Control+Shift+C') {
+    bind('Control+Shift+C', () => sendToOverlay('action:capture'), 'Скриншот задачи (резерв)');
+  }
+
   // Перемотка ответов работает всегда, независимо от положения курсора.
   bind('Control+Shift+Left', () => sendToOverlay('action:history-prev'), 'Прошлый ответ');
   bind('Control+Shift+Right', () => sendToOverlay('action:history-next'), 'Следующий ответ');
@@ -947,6 +960,160 @@ function registerShortcuts() {
   if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.webContents.send('hotkeys:status', hotkeyStatus);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Задача со скриншота (live coding)                                  */
+/* ------------------------------------------------------------------ */
+
+let captureWin = null;
+let captureShot = null;
+let captureScale = 1;
+let captureResolve = null;
+
+function finishCapture(result) {
+  const resolve = captureResolve;
+  captureResolve = null;
+
+  if (captureWin && !captureWin.isDestroyed()) captureWin.close();
+  captureWin = null;
+  captureShot = null;
+
+  if (resolve) resolve(result);
+}
+
+/**
+ * Снимаем экран ДО показа окна выделения, поэтому рамка не попадает
+ * в картинку. Координаты выделения пересчитываем в пиксели снимка.
+ */
+async function captureArea() {
+  if (captureWin) return { ok: false, cancelled: true };
+
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const scale = display.scaleFactor || 1;
+
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: {
+      width: Math.round(display.size.width * scale),
+      height: Math.round(display.size.height * scale),
+    },
+  });
+
+  const source =
+    sources.find((item) => String(item.display_id) === String(display.id)) || sources[0];
+  if (!source || source.thumbnail.isEmpty()) return { ok: false, cancelled: true };
+
+  captureShot = source.thumbnail;
+  captureScale = scale;
+
+  return new Promise((resolve) => {
+    captureResolve = resolve;
+
+    captureWin = new BrowserWindow({
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'capture-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    captureWin.setAlwaysOnTop(true, 'screen-saver');
+    captureWin.setMenuBarVisibility(false);
+    captureWin.loadFile(path.join(__dirname, 'renderer', 'capture.html'));
+
+    captureWin.once('ready-to-show', () => {
+      if (!captureWin || captureWin.isDestroyed()) return;
+      captureWin.show();
+      captureWin.focus();
+    });
+
+    captureWin.on('closed', () => {
+      captureWin = null;
+      const pending = captureResolve;
+      captureResolve = null;
+      captureShot = null;
+      if (pending) pending({ ok: false, cancelled: true });
+    });
+  });
+}
+
+function cropSelection(rect) {
+  if (!captureShot) return null;
+
+  const scale = captureScale || 1;
+  const size = captureShot.getSize();
+  const x = Math.max(0, Math.round(rect.x * scale));
+  const y = Math.max(0, Math.round(rect.y * scale));
+  const width = Math.min(size.width - x, Math.round(rect.width * scale));
+  const height = Math.min(size.height - y, Math.round(rect.height * scale));
+
+  if (width < 8 || height < 8) return null;
+
+  let image = captureShot.crop({ x, y, width, height });
+  // Больше 1600 px по ширине vision-модели всё равно ужимают.
+  if (image.getSize().width > 1600) image = image.resize({ width: 1600, quality: 'good' });
+  return image.toJPEG(88).toString('base64');
+}
+
+const VISION_PROMPT = [
+  'Ты — помощник на техническом собеседовании.',
+  'На скриншоте условие задачи и, возможно, уже начатый код.',
+  'Сначала одной строкой скажи, что требуется.',
+  'Затем дай рабочее решение с отступами.',
+  'В конце одной строкой укажи сложность.',
+  'Не используй markdown, заголовки и обратные кавычки.',
+  'Пиши по-русски, кратко, без воды.',
+].join('\n');
+
+async function solveScreenshot(base64, controller) {
+  const providerId = settings.provider || 'cloudflare';
+  const provider = providerConfig(providerId);
+  const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
+  const model = visionModel(providerId, settings.model);
+
+  if (!provider.noKey && !apiKey) throw new Error('Нет ключа для модели');
+  if (provider.needsAccount && !settings.cloudflareAccount) {
+    throw new Error('Не указан Account ID Cloudflare');
+  }
+
+  await streamChat({
+    providerId,
+    apiKey,
+    accountId: settings.cloudflareAccount || '',
+    model,
+    messages: [
+      { role: 'system', content: VISION_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Реши задачу со скриншота.' },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+        ],
+      },
+    ],
+    maxTokens: 900,
+    temperature: 0.2,
+    signal: controller.signal,
+    onDelta: (text) => sendToOverlay('llm:delta', text),
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1229,6 +1396,36 @@ function registerIpc() {
   ipcMain.on('llm:abort', () => {
     if (activeAbort) activeAbort.abort();
     activeAbort = null;
+  });
+
+  // Выделение области на снимке экрана
+  ipcMain.on('capture:select', (_event, rect) => {
+    const base64 = rect ? cropSelection(rect) : null;
+    finishCapture(base64 ? { ok: true, base64 } : { ok: false, cancelled: true });
+  });
+
+  ipcMain.on('capture:cancel', () => finishCapture({ ok: false, cancelled: true }));
+
+  ipcMain.handle('vision:capture', async () => {
+    const shot = await captureArea();
+    if (!shot.ok) return { ok: false, cancelled: true };
+
+    if (activeAbort) activeAbort.abort();
+    const controller = new AbortController();
+    activeAbort = controller;
+
+    sendToOverlay('llm:start');
+    try {
+      await solveScreenshot(shot.base64, controller);
+      sendToOverlay('llm:done');
+      return { ok: true };
+    } catch (err) {
+      if (err.name === 'AbortError') return { ok: false, aborted: true };
+      sendToOverlay('llm:error', err.message);
+      return { ok: false, error: err.message };
+    } finally {
+      if (activeAbort === controller) activeAbort = null;
+    }
   });
 
   ipcMain.handle('stt:transcribe', async (_event, payload) => {

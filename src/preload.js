@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('api', {
 
   /* модель */
   ask: (question) => ipcRenderer.invoke('llm:ask', { question }),
+  captureSolve: () => ipcRenderer.invoke('vision:capture'),
   abort: () => ipcRenderer.send('llm:abort'),
   onLlmStart: (cb) => subscribe('llm:start', cb),
   onLlmDelta: (cb) => subscribe('llm:delta', cb),
