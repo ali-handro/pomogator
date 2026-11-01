@@ -13,6 +13,7 @@ const {
   shell,
   desktopCapturer,
   net,
+  dialog,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -28,6 +29,7 @@ const isDev = process.argv.includes('--dev');
 let overlayWin = null;
 let settingsWin = null;
 let trainerWin = null;
+let meetingWin = null;
 let tray = null;
 let isQuitting = false;
 let activeAbort = null;
@@ -462,7 +464,8 @@ function lowerOverlayForSettings(lower) {
 function auxWindowOpen() {
   return (
     (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible()) ||
-    (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible())
+    (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible()) ||
+    (meetingWin && !meetingWin.isDestroyed() && meetingWin.isVisible())
   );
 }
 
@@ -579,6 +582,61 @@ function createTrainer() {
   });
 
   trainerWin.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
+/**
+ * Запись встречи: два канала (микрофон — вы, звук системы — собеседник),
+ * живой транскрипт и сохранение расшифровки. Аудио не хранится.
+ */
+function createMeeting() {
+  if (meetingWin && !meetingWin.isDestroyed()) {
+    meetingWin.show();
+    meetingWin.focus();
+    return;
+  }
+
+  const work = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(880, work.width - 80);
+  const height = Math.min(700, work.height - 80);
+
+  meetingWin = new BrowserWindow({
+    width,
+    height,
+    x: Math.round(work.x + (work.width - width) / 2),
+    y: Math.round(work.y + (work.height - height) / 2),
+    minWidth: 620,
+    minHeight: 520,
+    alwaysOnTop: false,
+    title: 'Suflyor — запись встречи',
+    backgroundColor: '#0b0f16',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  syncOverlayTop();
+  meetingWin.loadFile(path.join(__dirname, 'renderer', 'meeting.html'));
+
+  meetingWin.once('ready-to-show', () => {
+    if (!meetingWin || meetingWin.isDestroyed()) return;
+    meetingWin.show();
+    meetingWin.focus();
+  });
+
+  meetingWin.on('closed', () => {
+    meetingWin = null;
+    syncOverlayTop();
+  });
+
+  meetingWin.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -701,7 +759,8 @@ function onOverlayWheel(wParam) {
 function auxFocused() {
   return (
     (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible() && settingsWin.isFocused()) ||
-    (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible() && trainerWin.isFocused())
+    (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible() && trainerWin.isFocused()) ||
+    (meetingWin && !meetingWin.isDestroyed() && meetingWin.isVisible() && meetingWin.isFocused())
   );
 }
 
@@ -885,6 +944,7 @@ function buildTrayMenu() {
       : []),
     { type: 'separator' },
     { label: 'Тренажёр собеседования…', click: createTrainer },
+    { label: 'Запись встречи…', click: createMeeting },
     { label: 'Настройки…', click: createSettings },
     { type: 'separator' },
     {
@@ -1550,11 +1610,27 @@ function registerIpc() {
     const audio = payload && payload.audio;
     if (!audio || !audio.byteLength) return { ok: false, error: 'Пустое аудио' };
 
+    // Запись встреч может попросить конкретный движок, не меняя настройки суфлёра.
+    const override = payload && payload.override;
+    if (override && override.provider === 'local') {
+      try {
+        const text = await localStt.transcribe(audio, override.model);
+        return { ok: true, text, model: 'local' };
+      } catch (err) {
+        if (err.name === 'AbortError') return { ok: false, aborted: true };
+        return { ok: false, error: err.message };
+      }
+    }
+
     if (sttAbort) sttAbort.abort();
     const controller = new AbortController();
     sttAbort = controller;
 
     try {
+      if (override && override.model) {
+        return await cloudTranscribe(audio, controller, override.model);
+      }
+
       if (settings.sttProvider === 'local') {
         try {
           const text = await localStt.transcribe(audio, settings.localSttModel);
@@ -1696,6 +1772,73 @@ function registerIpc() {
 
   ipcMain.on('settings:open', createSettings);
   ipcMain.on('trainer:open', createTrainer);
+  ipcMain.on('meeting:open', createMeeting);
+
+  // Пока идёт запись встречи, суфлёр не слушает микрофон.
+  ipcMain.on('meeting:recording', (_event, value) => {
+    sendToOverlay('meeting:recording', !!value);
+  });
+
+  ipcMain.handle('meeting:save', (_event, payload) => {
+    try {
+      const dir = path.join(app.getPath('userData'), 'meetings');
+      fs.mkdirSync(dir, { recursive: true });
+
+      const startedAt = Number(payload && payload.startedAt) || Date.now();
+      const stamp = new Date(startedAt).toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const file = path.join(dir, `${stamp}.json`);
+
+      const data = {
+        startedAt,
+        endedAt: Date.now(),
+        duration: Number(payload && payload.duration) || 0,
+        entries: Array.isArray(payload && payload.entries) ? payload.entries : [],
+      };
+
+      fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+      return { ok: true, file };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('meeting:export', async (_event, payload) => {
+    const entries = Array.isArray(payload && payload.entries) ? payload.entries : [];
+    if (!entries.length) return { ok: false, error: 'Нечего экспортировать' };
+
+    const startedAt = Number(payload && payload.startedAt) || Date.now();
+    const stamp = new Date(startedAt).toISOString().slice(0, 19).replace(/[:T]/g, '-');
+
+    const result = await dialog.showSaveDialog({
+      title: 'Экспорт расшифровки',
+      defaultPath: path.join(app.getPath('documents'), `meeting-${stamp}.md`),
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+
+    if (result.canceled || !result.filePath) return { ok: false, cancelled: true };
+
+    const lines = [
+      `# Встреча ${new Date(startedAt).toLocaleString('ru-RU')}`,
+      '',
+      `Длительность: ${Math.round((Number(payload && payload.duration) || 0) / 60)} мин`,
+      '',
+    ];
+
+    for (const entry of entries) {
+      const seconds = Math.max(0, Number(entry.t) || 0);
+      const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+      const ss = String(Math.floor(seconds % 60)).padStart(2, '0');
+      lines.push(`**${mm}:${ss} · ${entry.speaker}:** ${entry.text}`);
+      lines.push('');
+    }
+
+    try {
+      fs.writeFileSync(result.filePath, lines.join('\n'), 'utf8');
+      return { ok: true, path: result.filePath };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
   ipcMain.on('app:quit', () => {
     isQuitting = true;
     app.quit();

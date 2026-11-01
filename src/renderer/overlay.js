@@ -445,6 +445,7 @@ const stt = {
   threshold: VAD_THRESHOLD,
   listening: true,
   pausedByUser: false,
+  meetingPaused: false,
   inSpeech: false,
   lastVoiceAt: 0,
   tailChunks: 0,
@@ -1099,6 +1100,17 @@ function bindIpc() {
     sttNoticeTimer = setTimeout(() => {
       if (el.hint.textContent === text) applySettings();
     }, 6000);
+  });
+
+  // Пока идёт запись встречи, суфлёр не слушает микрофон.
+  window.api.onMeetingRecording((value) => {
+    if (value) {
+      stt.meetingPaused = stt.listening;
+      if (stt.listening) setListening(false, false);
+    } else if (stt.meetingPaused) {
+      stt.meetingPaused = false;
+      if (!stt.pausedByUser) setListening(true, false);
+    }
   });
 
   window.api.onLlmStart(() => setState('streaming'));

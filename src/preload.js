@@ -25,6 +25,13 @@ contextBridge.exposeInMainWorld('api', {
   hideOverlay: () => ipcRenderer.send('overlay:hide'),
   openSettings: () => ipcRenderer.send('settings:open'),
   openTrainer: () => ipcRenderer.send('trainer:open'),
+  openMeeting: () => ipcRenderer.send('meeting:open'),
+
+  /* запись встречи */
+  meetingSave: (data) => ipcRenderer.invoke('meeting:save', data),
+  meetingExport: (data) => ipcRenderer.invoke('meeting:export', data),
+  setMeetingRecording: (value) => ipcRenderer.send('meeting:recording', value),
+  onMeetingRecording: (cb) => subscribe('meeting:recording', cb),
 
   /* события из главного процесса */
   onAction: (name, cb) => subscribe(`action:${name}`, cb),
@@ -41,7 +48,7 @@ contextBridge.exposeInMainWorld('api', {
   onLlmError: (cb) => subscribe('llm:error', cb),
 
   /* распознавание речи */
-  transcribe: (audio) => ipcRenderer.invoke('stt:transcribe', { audio }),
+  transcribe: (audio, override) => ipcRenderer.invoke('stt:transcribe', { audio, override }),
   testStt: () => ipcRenderer.invoke('stt:test'),
   onSttNotice: (cb) => subscribe('stt:notice', cb),
 

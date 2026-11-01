@@ -652,6 +652,10 @@ function bind() {
     if (hasApi) window.api.openTrainer();
   });
 
+  $('meetingBtn').addEventListener('click', () => {
+    if (hasApi) window.api.openMeeting();
+  });
+
   $('sttTestBtn').addEventListener('click', async () => {
     const btn = $('sttTestBtn');
     const out = $('sttTestResult');

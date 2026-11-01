@@ -1,0 +1,482 @@
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+
+const OUT_RATE = 16000;
+const MAX_SEGMENT_MS = 15000;
+const SILENCE_MS = 650;
+const PRE_ROLL_CHUNKS = 3;
+
+const state = {
+  running: false,
+  startedAt: 0,
+  elapsed: 0,
+  timerId: 0,
+  entries: [],
+  ctx: null,
+  streams: [],
+  channels: null,
+};
+
+/* ------------------------------------------------------------------ */
+/*  Аудио                                                              */
+/* ------------------------------------------------------------------ */
+
+function rmsOf(samples) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / samples.length);
+}
+
+function encodeWav(chunks, srcRate, dstRate) {
+  let frames = 0;
+  for (const chunk of chunks) frames += chunk.length;
+
+  const flat = new Float32Array(frames);
+  let position = 0;
+  for (const chunk of chunks) {
+    flat.set(chunk, position);
+    position += chunk.length;
+  }
+
+  const outFrames = Math.max(1, Math.round((frames * dstRate) / srcRate));
+  const ratio = frames / outFrames;
+  const samples = new Float32Array(outFrames);
+
+  for (let i = 0; i < outFrames; i += 1) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(frames, Math.max(start + 1, Math.floor((i + 1) * ratio)));
+    let sum = 0;
+    for (let j = start; j < end; j += 1) sum += flat[j];
+    samples[i] = sum / (end - start);
+  }
+
+  const buffer = new ArrayBuffer(44 + outFrames * 2);
+  const view = new DataView(buffer);
+  const write = (offset, text) => {
+    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+
+  write(0, 'RIFF');
+  view.setUint32(4, 36 + outFrames * 2, true);
+  write(8, 'WAVE');
+  write(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, dstRate, true);
+  view.setUint32(28, dstRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, 'data');
+  view.setUint32(40, outFrames * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < outFrames; i += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    offset += 2;
+  }
+
+  return buffer;
+}
+
+function makeChannel(speaker, threshold, levelId) {
+  return {
+    speaker,
+    threshold,
+    levelId,
+    preRoll: [],
+    segment: [],
+    segmentMs: 0,
+    inSpeech: false,
+    lastVoiceAt: 0,
+    startAt: 0,
+    lastText: '',
+    queue: [],
+    busy: false,
+  };
+}
+
+function updateLevel(channel, rms) {
+  const el = $(channel.levelId);
+  if (!el) return;
+  el.style.width = `${Math.min(100, Math.round(rms * 900))}%`;
+}
+
+function onAudio(channel, chunk) {
+  const rms = rmsOf(chunk);
+  updateLevel(channel, rms);
+
+  const chunkMs = (chunk.length / state.ctx.sampleRate) * 1000;
+  const voiced = rms > channel.threshold;
+
+  if (voiced) {
+    if (!channel.inSpeech) {
+      channel.inSpeech = true;
+      channel.segment = channel.preRoll.slice();
+      channel.segmentMs = channel.segment.length * chunkMs;
+      channel.preRoll = [];
+      channel.startAt = Math.max(0, state.elapsed - channel.segmentMs / 1000);
+    }
+    channel.lastVoiceAt = performance.now();
+    channel.segment.push(chunk);
+    channel.segmentMs += chunkMs;
+    if (channel.segmentMs >= MAX_SEGMENT_MS) flush(channel);
+    return;
+  }
+
+  if (channel.inSpeech) {
+    channel.segment.push(chunk);
+    channel.segmentMs += chunkMs;
+    if (performance.now() - channel.lastVoiceAt > SILENCE_MS) flush(channel);
+    return;
+  }
+
+  channel.preRoll.push(chunk);
+  if (channel.preRoll.length > PRE_ROLL_CHUNKS) channel.preRoll.shift();
+}
+
+function flush(channel) {
+  const chunks = channel.segment;
+  const ms = channel.segmentMs;
+  const startAt = channel.startAt;
+
+  channel.segment = [];
+  channel.segmentMs = 0;
+  channel.inSpeech = false;
+  channel.preRoll = [];
+
+  if (ms < 400 || !chunks.length) return;
+
+  channel.queue.push({ wav: encodeWav(chunks, state.ctx.sampleRate, OUT_RATE), startAt });
+  drain(channel);
+}
+
+function engineOverride() {
+  if ($('engine').value === 'local') return { provider: 'local', model: 'base' };
+  return { model: '@cf/openai/whisper-large-v3-turbo' };
+}
+
+async function drain(channel) {
+  if (channel.busy) return;
+
+  const item = channel.queue.shift();
+  if (!item) return;
+
+  channel.busy = true;
+
+  try {
+    const result = await window.api.transcribe(item.wav, engineOverride());
+    const text = String((result && result.text) || '').trim();
+
+    if (result && result.ok && text && !isNoise(text)) {
+      const key = text.toLowerCase();
+      if (key !== channel.lastText) {
+        channel.lastText = key;
+        addEntry(item.startAt, channel.speaker, text);
+      }
+    } else if (result && result.error) {
+      setStatus(`Распознавание: ${result.error}`);
+    }
+  } catch (err) {
+    setStatus(`Распознавание: ${err.message}`);
+  } finally {
+    channel.busy = false;
+    if (channel.queue.length) drain(channel);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Интерфейс                                                          */
+/* ------------------------------------------------------------------ */
+
+// Whisper на тишине любит «додумывать» титры — такие фразы не пишем.
+const STT_NOISE = [
+  'субтитр',
+  'продолжение следует',
+  'спасибо за просмотр',
+  'подписывайтесь',
+  'ставьте лайк',
+  'amara.org',
+  'dimatorzok',
+  'редактор субтитров',
+  'корректор',
+  'продолжение в следующей',
+  'титры',
+];
+
+function isNoise(text) {
+  const low = String(text || '').toLowerCase();
+  return STT_NOISE.some((fragment) => low.includes(fragment));
+}
+
+function setStatus(text) {
+  $('status').textContent = text || '';
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function renderEntry(entry) {
+  const empty = $('empty');
+  if (empty) empty.remove();
+
+  const row = document.createElement('div');
+  row.className = `entry ${entry.speaker === 'Вы' ? 'me' : 'them'}`;
+
+  const time = document.createElement('span');
+  time.className = 'time';
+  time.textContent = formatTime(entry.t);
+
+  const speaker = document.createElement('span');
+  speaker.className = 'speaker';
+  speaker.textContent = entry.speaker;
+
+  const text = document.createElement('span');
+  text.className = 'text';
+  text.textContent = entry.text;
+
+  row.append(time, speaker, text);
+
+  const transcript = $('transcript');
+  transcript.appendChild(row);
+  transcript.scrollTop = transcript.scrollHeight;
+}
+
+function addEntry(at, speaker, text) {
+  const entry = { t: Math.max(0, Math.round(at)), speaker, text: text.trim() };
+  state.entries.push(entry);
+  state.entries.sort((a, b) => a.t - b.t);
+  renderEntry(entry);
+  $('btnExport').disabled = false;
+  $('btnClear').disabled = false;
+}
+
+function tick() {
+  state.elapsed = (Date.now() - state.startedAt) / 1000;
+  $('timer').textContent = formatTime(state.elapsed);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Старт и стоп                                                       */
+/* ------------------------------------------------------------------ */
+
+function connect(stream, channel) {
+  const source = state.ctx.createMediaStreamSource(stream);
+  const proc = state.ctx.createScriptProcessor(2048, 1, 1);
+
+  proc.onaudioprocess = (event) => {
+    const input = event.inputBuffer.getChannelData(0);
+    const chunk = new Float32Array(input.length);
+    chunk.set(input);
+    onAudio(channel, chunk);
+  };
+
+  source.connect(proc);
+  proc.connect(state.ctx.destination);
+  channel.proc = proc;
+  channel.source = source;
+}
+
+async function start() {
+  if (state.running) return;
+
+  let micStream = null;
+  let sysStream = null;
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch (err) {
+    setStatus('Нет доступа к микрофону — проверьте разрешения Windows');
+    return;
+  }
+
+  try {
+    sysStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+    for (const track of sysStream.getVideoTracks()) {
+      track.stop();
+      sysStream.removeTrack(track);
+    }
+    if (!sysStream.getAudioTracks().length) throw new Error('система не отдала звук');
+  } catch (err) {
+    if (sysStream) for (const track of sysStream.getTracks()) track.stop();
+    sysStream = null;
+    setStatus('Звук системы недоступен — пишу только микрофон');
+  }
+
+  const ctx = new AudioContext();
+  state.ctx = ctx;
+  if (ctx.state === 'suspended') await ctx.resume();
+
+  state.channels = {
+    me: makeChannel('Вы', 0.012, 'levelMe'),
+    them: makeChannel('Собеседник', 0.008, 'levelThem'),
+  };
+
+  state.streams = [micStream, sysStream].filter(Boolean);
+
+  connect(micStream, state.channels.me);
+  if (sysStream) connect(sysStream, state.channels.them);
+
+  state.running = true;
+  state.startedAt = Date.now();
+  state.elapsed = 0;
+  tick();
+  state.timerId = setInterval(tick, 1000);
+
+  document.body.classList.add('recording');
+  $('recordLabel').textContent = 'Остановить';
+  setStatus('Идёт запись — говорите как обычно');
+
+  if (window.api.setMeetingRecording) window.api.setMeetingRecording(true);
+}
+
+function disconnect() {
+  if (state.channels) {
+    for (const channel of Object.values(state.channels)) {
+      if (channel.proc) {
+        channel.proc.onaudioprocess = null;
+        try {
+          channel.proc.disconnect();
+        } catch {
+          /* уже отключён */
+        }
+      }
+      if (channel.source) {
+        try {
+          channel.source.disconnect();
+        } catch {
+          /* уже отключён */
+        }
+      }
+    }
+  }
+
+  for (const stream of state.streams) {
+    for (const track of stream.getTracks()) track.stop();
+  }
+  state.streams = [];
+
+  if (state.ctx) {
+    try {
+      state.ctx.close();
+    } catch {
+      /* уже закрыт */
+    }
+  }
+  state.ctx = null;
+}
+
+async function waitQueues() {
+  const deadline = Date.now() + 60000;
+
+  for (;;) {
+    const busy = state.channels
+      ? Object.values(state.channels).some((ch) => ch.busy || ch.queue.length)
+      : false;
+    if (!busy || Date.now() > deadline) return;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+}
+
+async function stop() {
+  if (!state.running) return;
+
+  state.running = false;
+  clearInterval(state.timerId);
+
+  for (const channel of Object.values(state.channels || {})) flush(channel);
+
+  disconnect();
+
+  document.body.classList.remove('recording');
+  $('recordLabel').textContent = 'Записать';
+  $('timer').textContent = formatTime(state.elapsed);
+  setStatus('Сохраняю расшифровку…');
+
+  if (window.api.setMeetingRecording) window.api.setMeetingRecording(false);
+
+  await waitQueues();
+
+  if (state.entries.length) {
+    try {
+      const result = await window.api.meetingSave({
+        startedAt: state.startedAt,
+        duration: Math.round(state.elapsed),
+        entries: state.entries,
+      });
+      setStatus(result && result.ok ? 'Расшифровка сохранена' : 'Не удалось сохранить');
+    } catch (err) {
+      setStatus(`Не удалось сохранить: ${err.message}`);
+    }
+  } else {
+    setStatus('Речь не распознана');
+  }
+
+  $('btnExport').disabled = state.entries.length === 0;
+  $('btnClear').disabled = state.entries.length === 0;
+}
+
+function clear() {
+  state.entries = [];
+  $('transcript').innerHTML =
+    '<p class="empty" id="empty">Нажмите «Записать» — Суфлёр запишет микрофон и звук системы, а здесь появится расшифровка с разделением на вас и собеседника. Аудио нигде не сохраняется.</p>';
+  $('btnExport').disabled = true;
+  $('btnClear').disabled = true;
+  $('btnSummary').disabled = true;
+  setStatus('');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Экспорт и выжимка                                                  */
+/* ------------------------------------------------------------------ */
+
+async function exportMarkdown() {
+  if (!state.entries.length) return;
+
+  try {
+    const result = await window.api.meetingExport({
+      startedAt: state.startedAt,
+      duration: Math.round(state.elapsed),
+      entries: state.entries,
+    });
+    if (result && result.ok) setStatus(`Сохранено: ${result.path}`);
+    else if (result && result.error) setStatus(result.error);
+  } catch (err) {
+    setStatus(`Экспорт: ${err.message}`);
+  }
+}
+
+function boot() {
+  $('btnRecord').addEventListener('click', () => {
+    if (state.running) stop();
+    else start();
+  });
+
+  $('btnClose').addEventListener('click', () => window.close());
+  $('btnExport').addEventListener('click', exportMarkdown);
+  $('btnClear').addEventListener('click', clear);
+
+  window.addEventListener('beforeunload', () => {
+    if (state.running) {
+      clearInterval(state.timerId);
+      disconnect();
+      if (window.api.setMeetingRecording) window.api.setMeetingRecording(false);
+    }
+  });
+
+  $('btnSummary').title = 'Появится в следующей версии';
+}
+
+window.addEventListener('DOMContentLoaded', boot);
