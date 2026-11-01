@@ -25,6 +25,7 @@ const { startWheelHook, stopWheelHook } = require('./wheel-hook');
 const { createHotkeys } = require('./hotkeys');
 const { createScreenshotService } = require('./screenshot');
 const { createMeetingStore } = require('./meeting-store');
+const license = require('./license');
 const { buildMessages } = require('./prompt');
 
 const APP_ROOT = path.join(__dirname, '..');
@@ -98,6 +99,11 @@ const DEFAULT_SETTINGS = {
   autoAnswer: true,
   listen: true,
   silenceMs: 450,
+  /* лицензия и тариф */
+  license: null,
+  trialStartedAt: 0,
+  usage: null,
+  purchaseUrl: '',
   hotkeys: {
     toggle: 'Control+Shift+Space',
     interactive: 'Control+Shift+E',
@@ -163,8 +169,15 @@ function loadSettings() {
     }
 
     settings.cloudflareAccount = normalizeAccountId(settings.cloudflareAccount);
+
+    // Пробный период начинается с первого запуска и длится TRIAL_DAYS дней.
+    if (!settings.trialStartedAt) {
+      settings.trialStartedAt = Date.now();
+      persist();
+    }
   } catch {
     settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+    settings.trialStartedAt = Date.now();
   }
 }
 
@@ -1194,6 +1207,24 @@ async function cloudTranscribe(audio, controller, startModel) {
 function registerIpc() {
   ipcMain.handle('settings:get', () => settings);
 
+  ipcMain.handle('license:status', () => license.describe(settings));
+
+  ipcMain.handle('license:activate', (_event, key) => {
+    const result = license.verifyKey(key);
+    if (!result.ok) return result;
+
+    settings.license = {
+      plan: result.plan,
+      exp: result.exp,
+      id: result.id,
+      key: String(key || '').trim(),
+      activatedAt: Date.now(),
+    };
+    persist();
+
+    return { ok: true, state: license.describe(settings) };
+  });
+
   ipcMain.handle('settings:save', (_event, patch) => {
     const prevHotkeys = JSON.stringify(settings.hotkeys);
     const prevDisplay = Number(settings.overlayDisplay) || 0;
@@ -1207,6 +1238,9 @@ function registerIpc() {
     // Позицию окна знает только главный процесс — не даём рендереру её затереть.
     const incoming = { ...(patch || {}) };
     delete incoming.overlayPos;
+    delete incoming.license;
+    delete incoming.trialStartedAt;
+    delete incoming.usage;
 
     settings = {
       ...settings,
@@ -1333,6 +1367,13 @@ function registerIpc() {
       return { ok: false, error: message };
     }
 
+    const quota = license.consume(settings, 'answers');
+    if (!quota.ok) {
+      sendToOverlay('llm:error', quota.error);
+      return { ok: false, error: quota.error, quota: true };
+    }
+    persist();
+
     if (activeAbort) activeAbort.abort();
     const controller = new AbortController();
     activeAbort = controller;
@@ -1394,6 +1435,13 @@ function registerIpc() {
 
   ipcMain.handle('vision:capture', async (_event, payload) => {
     const mode = payload && payload.mode === 'review' ? 'review' : 'solve';
+
+    const quota = license.consume(settings, 'screenshots');
+    if (!quota.ok) {
+      sendToOverlay('llm:error', quota.error);
+      return { ok: false, error: quota.error, quota: true };
+    }
+    persist();
 
     if (activeAbort) activeAbort.abort();
     const controller = new AbortController();

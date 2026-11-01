@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('api', {
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   onSettingsChanged: (cb) => subscribe('settings:changed', cb),
 
+  /* тариф и лицензия */
+  licenseStatus: () => ipcRenderer.invoke('license:status'),
+  licenseActivate: (key) => ipcRenderer.invoke('license:activate', key),
+
   /* окно */
   setClickThrough: (value) => ipcRenderer.send('overlay:set-click-through', value),
   onClickThrough: (cb) => subscribe('overlay:click-through', cb),

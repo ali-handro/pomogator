@@ -32,18 +32,19 @@ function run(command, args) {
 run('npm', ['version', kind, '--no-git-tag-version']);
 
 const version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
-console.log(`\n=== Версия ${version} ===\n`);
+const productName = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).productName || 'Pomogator';
+console.log(`\n=== ${productName} ${version} ===\n`);
 
 run('npm', ['run', 'build']);
 
-const artifact = path.join(ROOT, 'dist', `Suflyor-${version}.exe`);
+const artifact = path.join(ROOT, 'dist', `${productName}-${version}.exe`);
 if (!fs.existsSync(artifact)) {
   console.error('Не найден артефакт сборки:', artifact);
   process.exit(1);
 }
 
 const desktop = path.join(process.env.USERPROFILE || '', 'Desktop');
-const target = path.join(desktop, `Suflyor-${version}.exe`);
+const target = path.join(desktop, `${productName}-${version}.exe`);
 fs.copyFileSync(artifact, target);
 console.log('\nСкопировано на рабочий стол:', target);
 
@@ -82,7 +83,7 @@ function cleanup() {
 }
 
 try {
-  run('git', ['add', 'package.json', 'package-lock.json', 'CHANGELOG.md']);
+  run('git', ['add', '-A']);
   run('git', ['commit', '-m', `release: v${version}`]);
   run('git', ['tag', `v${version}`]);
   console.log(`Тег v${version} создан`);

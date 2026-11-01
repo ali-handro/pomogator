@@ -117,6 +117,80 @@ h1 {
   border-radius: 14px;
 }
 
+/* ---------- тариф ---------- */
+
+.plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.plan-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.plan-name.paid {
+  color: var(--ok);
+}
+
+.plan-name.trial {
+  color: var(--accent);
+}
+
+.plan-note {
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.plan-usage {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.plan-usage b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.plan-activate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.plan-activate input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.plan-card .hint {
+  display: block;
+  margin-top: 8px;
+}
+
+#licenseStatus.ok {
+  color: var(--ok);
+}
+
+#licenseStatus.err {
+  color: #f0a35e;
+}
+
 h2 {
   margin-bottom: 2px;
   font-size: 10.5px;

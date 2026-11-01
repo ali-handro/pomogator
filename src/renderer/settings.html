@@ -34,6 +34,32 @@
       </header>
 
       <main class="content">
+        <section class="card plan-card">
+          <h2>Тариф</h2>
+
+          <div class="plan-head">
+            <div class="plan-title">
+              <span class="plan-name" id="planName">Бесплатно</span>
+              <span class="plan-note" id="planNote"></span>
+            </div>
+            <button type="button" class="ghost test-btn" id="planBuy" hidden>Купить</button>
+          </div>
+
+          <div class="plan-usage" id="planUsage"></div>
+
+          <div class="plan-activate">
+            <input
+              type="text"
+              id="licenseKey"
+              placeholder="Ключ активации"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <button type="button" class="ghost test-btn" id="licenseActivate">Активировать</button>
+          </div>
+          <span class="hint" id="licenseStatus"></span>
+        </section>
+
         <section class="card">
           <h2>Подключение</h2>
 
