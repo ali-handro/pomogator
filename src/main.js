@@ -13,7 +13,6 @@ const {
   shell,
   desktopCapturer,
   net,
-  dialog,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -21,6 +20,10 @@ const fs = require('fs');
 const { PROVIDERS, providerConfig, resolveBaseUrl, streamChat, visionModel } = require('./providers');
 const { sttConfig, transcribe } = require('./stt');
 const localStt = require('./localStt');
+const { startWheelHook, stopWheelHook } = require('./wheel-hook');
+const { createHotkeys } = require('./hotkeys');
+const { createScreenshotService } = require('./screenshot');
+const { createMeetingStore } = require('./meeting-store');
 const { buildMessages } = require('./prompt');
 
 const APP_ROOT = path.join(__dirname, '..');
@@ -35,7 +38,6 @@ let tray = null;
 let isQuitting = false;
 let activeAbort = null;
 let sttAbort = null;
-let hotkeyStatus = { failed: [] };
 
 /** Коды, при которых имеет смысл повторить запрос (лимит или временный сбой). */
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
@@ -188,6 +190,45 @@ function normalizeAccountId(value) {
   const match = text.match(/[0-9a-f]{32}/i);
   return match ? match[0].toLowerCase() : text;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Сервисы                                                            */
+/* ------------------------------------------------------------------ */
+
+const hotkeys = createHotkeys({
+  getSettings: () => settings,
+  onStatus: (status) => {
+    if (settingsWin && !settingsWin.isDestroyed()) {
+      settingsWin.webContents.send('hotkeys:status', status);
+    }
+  },
+  actions: {
+    toggleOverlay,
+    toggleInteractive,
+    createSettings,
+    listen: () => sendToOverlay('action:listen'),
+    answer: () => sendToOverlay('action:answer'),
+    regenerate: () => sendToOverlay('action:regenerate'),
+    clear: () => sendToOverlay('action:clear'),
+    capture: () => sendToOverlay('action:capture'),
+    review: () => sendToOverlay('action:review'),
+    history: (action) => sendToOverlay(`action:${action}`),
+  },
+});
+
+const screenshots = createScreenshotService({
+  getSettings: () => settings,
+  sendToOverlay,
+  streamChat,
+  providerConfig,
+  visionModel,
+});
+
+const meetings = createMeetingStore({
+  getSettings: () => settings,
+  streamChat,
+  providerConfig,
+});
 
 /* ------------------------------------------------------------------ */
 /*  Окна                                                               */
@@ -431,12 +472,12 @@ function createOverlay() {
 
   overlayWin.on('hide', () => {
     hoveringHeader = false;
-    setAnswerKeysBound(false);
+    hotkeys.setAnswerKeysBound(false);
   });
 
   overlayWin.on('closed', () => {
     stopCustomResize(false);
-    setAnswerKeysBound(false);
+    hotkeys.setAnswerKeysBound(false);
     overlayWin = null;
   });
 
@@ -713,7 +754,7 @@ function applyClickThrough() {
   const through = !!settings.clickThrough;
   overlayWin.setIgnoreMouseEvents(through, { forward: true });
   hoveringHeader = false;
-  setAnswerKeysBound(false);
+  hotkeys.setAnswerKeysBound(false);
   // В режиме кликов окно должно получать фокус, иначе его нельзя перетащить
   // и не работает ручной ввод вопроса.
   overlayWin.setFocusable(!through);
@@ -733,40 +774,6 @@ let hoveringHeader = false;
 // Прямоугольник текста ответа в координатах окна. Пока курсор над ним,
 // окно перехватывает мышь, чтобы работало колесо перемотки ответов.
 let answerRegion = null;
-let answerKeysBound = false;
-
-const ANSWER_KEYS = [
-  ['Left', 'history-prev'],
-  ['Right', 'history-next'],
-  ['Down', 'history-latest'],
-];
-
-// Время последнего колеса, которое обработал сам renderer.
-let lastRendererWheelAt = 0;
-
-function setAnswerKeysBound(value) {
-  if (value === answerKeysBound) return;
-  answerKeysBound = value;
-
-  for (const [accelerator, action] of ANSWER_KEYS) {
-    try {
-      if (value) {
-        globalShortcut.register(accelerator, () => sendToOverlay(`action:${action}`));
-      } else {
-        globalShortcut.unregister(accelerator);
-      }
-    } catch (err) {
-      console.warn('[history-keys]', accelerator, err.message);
-    }
-  }
-}
-
-/* Колесо мыши над текстом ответа. Окно оверлея почти всегда не в фокусе, а
-   Windows отдаёт колесо активному окну — поэтому слушаем глобально
-   низкоуровневым хуком и листаем историю сами. */
-const WHEEL_LOCK_MS = 140;
-let wheelLockUntil = 0;
-let wheelHookStarted = false;
 
 function cursorInAnswerRegion() {
   if (!overlayWin || overlayWin.isDestroyed() || !answerRegion) return false;
@@ -780,47 +787,22 @@ function cursorInAnswerRegion() {
   );
 }
 
-function onGlobalWheel(event) {
-  if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) return;
-  if (captureWin) return;
-  if (!cursorInAnswerRegion()) return;
-
-  const rotation = Number(event && event.rotation) || 0;
-  if (!rotation) return;
-
-  const now = Date.now();
-  if (now < wheelLockUntil) return;
-
-  wheelLockUntil = now + WHEEL_LOCK_MS;
-  sendToOverlay(`action:${rotation < 0 ? 'history-prev' : 'history-next'}`);
-  // Renderer мог получить то же колесо — гасим повтор.
-  sendToOverlay('overlay:wheel-consumed');
+/** Колесо листает историю только над текстом ответа и не во время выделения. */
+function wheelActive() {
+  if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) return false;
+  if (screenshots.isOpen()) return false;
+  return cursorInAnswerRegion();
 }
 
-function startWheelHook() {
-  if (wheelHookStarted) return;
-
-  try {
-    const { uIOhook } = require('uiohook-napi');
-    uIOhook.on('wheel', onGlobalWheel);
-    uIOhook.start();
-    wheelHookStarted = true;
-    console.log('[wheel] global hook started');
-  } catch (err) {
-    console.warn('[wheel] global hook unavailable:', err.message);
-  }
-}
-
-function stopWheelHook() {
-  if (!wheelHookStarted) return;
-
-  try {
-    const { uIOhook } = require('uiohook-napi');
-    uIOhook.stop();
-  } catch {
-    /* хук уже остановлен */
-  }
-  wheelHookStarted = false;
+function startWheel() {
+  startWheelHook({
+    isActive: wheelActive,
+    onStep: (direction) => {
+      sendToOverlay(`action:${direction < 0 ? 'history-prev' : 'history-next'}`);
+      // Renderer мог получить то же колесо — гасим повтор.
+      sendToOverlay('overlay:wheel-consumed');
+    },
+  });
 }
 
 /** Открыто и в фокусе ли вспомогательное окно (настройки, тренажёр). */
@@ -844,7 +826,7 @@ function startHoverWatch() {
     // переключения прозрачности на ходу заставляют окна перерисовываться.
     // Как только настройки теряют фокус (вернулись в приложение), всё работает.
     if (auxFocused()) {
-      setAnswerKeysBound(false);
+      hotkeys.setAnswerKeysBound(false);
       if (hoveringHeader) {
         hoveringHeader = false;
         overlayWin.setIgnoreMouseEvents(true, { forward: true });
@@ -871,7 +853,7 @@ function startHoverWatch() {
         point.y >= bounds.y + answerRegion.y &&
         point.y <= bounds.y + answerRegion.y + answerRegion.height
       );
-      setAnswerKeysBound(overAnswer);
+      hotkeys.setAnswerKeysBound(overAnswer);
       return;
     }
 
@@ -899,7 +881,7 @@ function startHoverWatch() {
 
     // В режиме суфлёра окно не в фокусе, поэтому стрелки над текстом
     // перехватываем глобально, пока курсор там.
-    setAnswerKeysBound(inAnswer);
+    hotkeys.setAnswerKeysBound(inAnswer);
 
     if (inside !== hoveringHeader) {
       hoveringHeader = inside;
@@ -1116,254 +1098,6 @@ function warmUp() {
 /*  Горячие клавиши                                                    */
 /* ------------------------------------------------------------------ */
 
-function registerShortcuts() {
-  setAnswerKeysBound(false);
-  globalShortcut.unregisterAll();
-
-  const failed = [];
-
-  const bind = (accelerator, handler, label) => {
-    if (!accelerator) return false;
-    try {
-      const ok = globalShortcut.register(accelerator, handler);
-      if (!ok) {
-        failed.push({ accelerator, label });
-        console.warn('[hotkey] busy:', accelerator);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      failed.push({ accelerator, label });
-      console.warn('[hotkey] invalid:', accelerator, err.message);
-      return false;
-    }
-  };
-
-  /** Занимаем первую свободную комбинацию из списка и возвращаем её. */
-  const bindFirst = (accelerators, handler, label) => {
-    for (const accelerator of accelerators) {
-      if (accelerator && bind(accelerator, handler, label)) return accelerator;
-    }
-    return null;
-  };
-
-  const listen = () => sendToOverlay('action:listen');
-
-  bind(settings.hotkeys.toggle, toggleOverlay, 'Показать / скрыть');
-  bind(settings.hotkeys.interactive, toggleInteractive, 'Режим кликов');
-  bind(settings.hotkeys.answer, () => sendToOverlay('action:answer'), 'Ответить');
-  bind(settings.hotkeys.regenerate, () => sendToOverlay('action:regenerate'), 'Перегенерировать');
-  bind(settings.hotkeys.clear, () => sendToOverlay('action:clear'), 'Очистить');
-  bind(settings.hotkeys.listen, listen, 'Пауза / слушать');
-
-  // Запасная комбинация — если выбранную заняла система.
-  if (settings.hotkeys.listen !== 'Control+Shift+M') {
-    bind('Control+Shift+M', listen, 'Пауза / слушать (резерв)');
-  }
-
-  bind(settings.hotkeys.settings, createSettings, 'Настройки');
-
-  const captureHotkey = bindFirst(
-    [settings.hotkeys.capture, 'Alt+C', 'Control+Shift+C'],
-    () => sendToOverlay('action:capture'),
-    'Скриншот задачи'
-  );
-
-  const reviewHotkey = bindFirst(
-    [settings.hotkeys.review, 'Alt+R', 'Control+Alt+R', 'Control+Shift+Alt+R'],
-    () => sendToOverlay('action:review'),
-    'Код-ревью по скриншоту'
-  );
-
-  // Перемотка ответов работает всегда, независимо от положения курсора.
-  bind('Control+Shift+Left', () => sendToOverlay('action:history-prev'), 'Прошлый ответ');
-  bind('Control+Shift+Right', () => sendToOverlay('action:history-next'), 'Следующий ответ');
-  bind('Control+Shift+Down', () => sendToOverlay('action:history-latest'), 'К актуальному ответу');
-
-  hotkeyStatus = {
-    failed,
-    listen: settings.hotkeys.listen,
-    capture: captureHotkey,
-    review: reviewHotkey,
-  };
-  if (settingsWin && !settingsWin.isDestroyed()) {
-    settingsWin.webContents.send('hotkeys:status', hotkeyStatus);
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Задача со скриншота (live coding)                                  */
-/* ------------------------------------------------------------------ */
-
-let captureWin = null;
-let captureShot = null;
-let captureScale = 1;
-let captureResolve = null;
-
-function finishCapture(result) {
-  const resolve = captureResolve;
-  captureResolve = null;
-
-  if (captureWin && !captureWin.isDestroyed()) captureWin.close();
-  captureWin = null;
-  captureShot = null;
-
-  if (resolve) resolve(result);
-}
-
-/**
- * Снимаем экран ДО показа окна выделения, поэтому рамка не попадает
- * в картинку. Координаты выделения пересчитываем в пиксели снимка.
- */
-async function captureArea() {
-  if (captureWin) return { ok: false, cancelled: true };
-
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const scale = display.scaleFactor || 1;
-
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: {
-      width: Math.round(display.size.width * scale),
-      height: Math.round(display.size.height * scale),
-    },
-  });
-
-  const source =
-    sources.find((item) => String(item.display_id) === String(display.id)) || sources[0];
-  if (!source || source.thumbnail.isEmpty()) return { ok: false, cancelled: true };
-
-  captureShot = source.thumbnail;
-  captureScale = scale;
-
-  return new Promise((resolve) => {
-    captureResolve = resolve;
-
-    captureWin = new BrowserWindow({
-      x: display.bounds.x,
-      y: display.bounds.y,
-      width: display.bounds.width,
-      height: display.bounds.height,
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      resizable: false,
-      movable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      hasShadow: false,
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, 'capture-preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-
-    captureWin.setAlwaysOnTop(true, 'screen-saver');
-    captureWin.setMenuBarVisibility(false);
-    captureWin.loadFile(path.join(__dirname, 'renderer', 'capture.html'));
-
-    captureWin.once('ready-to-show', () => {
-      if (!captureWin || captureWin.isDestroyed()) return;
-      captureWin.show();
-      captureWin.focus();
-    });
-
-    captureWin.on('closed', () => {
-      captureWin = null;
-      const pending = captureResolve;
-      captureResolve = null;
-      captureShot = null;
-      if (pending) pending({ ok: false, cancelled: true });
-    });
-  });
-}
-
-function cropSelection(rect) {
-  if (!captureShot) return null;
-
-  const scale = captureScale || 1;
-  const size = captureShot.getSize();
-  const x = Math.max(0, Math.round(rect.x * scale));
-  const y = Math.max(0, Math.round(rect.y * scale));
-  const width = Math.min(size.width - x, Math.round(rect.width * scale));
-  const height = Math.min(size.height - y, Math.round(rect.height * scale));
-
-  if (width < 8 || height < 8) return null;
-
-  let image = captureShot.crop({ x, y, width, height });
-  // Больше 1600 px по ширине vision-модели всё равно ужимают.
-  if (image.getSize().width > 1600) image = image.resize({ width: 1600, quality: 'good' });
-  return image.toJPEG(88).toString('base64');
-}
-
-const VISION_MODES = {
-  solve: {
-    prompt: [
-      'Ты — помощник на техническом собеседовании.',
-      'На скриншоте условие задачи и, возможно, уже начатый код.',
-      'Сначала одной строкой скажи, что требуется.',
-      'Затем дай рабочее решение с отступами.',
-      'В конце одной строкой укажи сложность.',
-      'Не используй markdown, заголовки и обратные кавычки.',
-      'Пиши по-русски, кратко, без воды.',
-    ].join('\n'),
-    ask: 'Реши задачу со скриншота.',
-  },
-  review: {
-    prompt: [
-      'Ты — опытный ревьюер на техническом собеседовании.',
-      'На скриншоте чужой код, который просят разобрать.',
-      'Дай 3–5 замечаний, каждое с новой строки: что не так и как исправить.',
-      'Смотри на баги, edge-cases, производительность и читаемость.',
-      'Где можешь — назови функцию или строку, к которой относится замечание.',
-      'В конце одной строкой — общий вердикт: можно ли принимать код.',
-      'Не используй markdown, заголовки и обратные кавычки. По-русски, кратко.',
-    ].join('\n'),
-    ask: 'Сделай код-ревью по скриншоту.',
-  },
-};
-
-async function solveScreenshot(base64, controller, mode = 'solve') {
-  const providerId = settings.provider || 'cloudflare';
-  const provider = providerConfig(providerId);
-  const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
-  const model = visionModel(providerId, settings.model);
-  const variant = VISION_MODES[mode] || VISION_MODES.solve;
-
-  if (!provider.noKey && !apiKey) throw new Error('Нет ключа для модели');
-  if (provider.needsAccount && !settings.cloudflareAccount) {
-    throw new Error('Не указан Account ID Cloudflare');
-  }
-
-  await streamChat({
-    providerId,
-    apiKey,
-    accountId: settings.cloudflareAccount || '',
-    model,
-    messages: [
-      { role: 'system', content: variant.prompt },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: variant.ask },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
-        ],
-      },
-    ],
-    maxTokens: 900,
-    temperature: 0.2,
-    signal: controller.signal,
-    onDelta: (text) => sendToOverlay('llm:delta', text),
-  });
-}
-
-/* ------------------------------------------------------------------ */
 /*  Распознавание речи: резервная модель                               */
 /* ------------------------------------------------------------------ */
 
@@ -1492,7 +1226,7 @@ function registerIpc() {
       );
     }
     persist();
-    if (JSON.stringify(settings.hotkeys) !== prevHotkeys) registerShortcuts();
+    if (JSON.stringify(settings.hotkeys) !== prevHotkeys) hotkeys.register();
     // Сменили модель распознавания — снова пробуем её, а не резервную.
     if (settings.sttModel !== prevSttModel) sttActiveModel = '';
     // Сменили локальную модель или источник — перезапустим движок лениво.
@@ -1516,7 +1250,7 @@ function registerIpc() {
     return settings;
   });
 
-  ipcMain.handle('hotkeys:get-status', () => hotkeyStatus);
+  ipcMain.handle('hotkeys:get-status', () => hotkeys.getStatus());
 
   ipcMain.handle('displays:get', () => {
     const primaryId = screen.getPrimaryDisplay().id;
@@ -1646,17 +1380,11 @@ function registerIpc() {
   });
 
   // Выделение области на снимке экрана
-  ipcMain.on('capture:select', (_event, rect) => {
-    const base64 = rect ? cropSelection(rect) : null;
-    finishCapture(base64 ? { ok: true, base64 } : { ok: false, cancelled: true });
-  });
-
-  ipcMain.on('capture:cancel', () => finishCapture({ ok: false, cancelled: true }));
+  ipcMain.on('capture:select', (_event, rect) => screenshots.select(rect));
+  ipcMain.on('capture:cancel', () => screenshots.cancel());
 
   ipcMain.handle('vision:capture', async (_event, payload) => {
     const mode = payload && payload.mode === 'review' ? 'review' : 'solve';
-    const shot = await captureArea();
-    if (!shot.ok) return { ok: false, cancelled: true };
 
     if (activeAbort) activeAbort.abort();
     const controller = new AbortController();
@@ -1664,7 +1392,9 @@ function registerIpc() {
 
     sendToOverlay('llm:start');
     try {
-      await solveScreenshot(shot.base64, controller, mode);
+      const result = await screenshots.captureAndSolve(controller, mode);
+      if (result.cancelled) return { ok: false, cancelled: true };
+
       sendToOverlay('llm:done');
       return { ok: true };
     } catch (err) {
@@ -1798,7 +1528,7 @@ function registerIpc() {
 
   // (перехват мыши над верхней панелью делает startHoverWatch)
   ipcMain.on('overlay:hide', () => {
-    setAnswerKeysBound(false);
+    hotkeys.setAnswerKeysBound(false);
     if (overlayWin && !overlayWin.isDestroyed()) overlayWin.hide();
   });
 
@@ -1824,10 +1554,6 @@ function registerIpc() {
   });
 
   // Колесо уже обработано в renderer — главному процессу листать не нужно.
-  ipcMain.on('overlay:wheel-handled', () => {
-    lastRendererWheelAt = Date.now();
-  });
-
   // Перетаскивание размера: главный процесс сам следит за курсором,
   // потому что нативный ресайз прозрачного frameless-окна на Windows не работает.
   ipcMain.on('overlay:resize-start', (_event, dir) => {
@@ -1850,196 +1576,10 @@ function registerIpc() {
     sendToOverlay('meeting:recording', !!value);
   });
 
-  ipcMain.handle('meeting:save', (_event, payload) => {
-    try {
-      const dir = path.join(app.getPath('userData'), 'meetings');
-      fs.mkdirSync(dir, { recursive: true });
+  ipcMain.handle('meeting:save', (_event, payload) => meetings.save(payload));
+  ipcMain.handle('meeting:summary', (_event, payload) => meetings.summarize(payload));
+  ipcMain.handle('meeting:export', (_event, payload) => meetings.exportMarkdown(payload));
 
-      const startedAt = Number(payload && payload.startedAt) || Date.now();
-      const stamp = new Date(startedAt).toLocaleString('sv-SE').replace(/[: ]/g, '-');
-      const file = path.join(dir, `${stamp}.json`);
-
-      const data = {
-        startedAt,
-        endedAt: Date.now(),
-        duration: Number(payload && payload.duration) || 0,
-        summary: String((payload && payload.summary) || ''),
-        entries: Array.isArray(payload && payload.entries) ? payload.entries : [],
-      };
-
-      fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
-      return { ok: true, file };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('meeting:summary', async (_event, payload) => {
-    const entries = Array.isArray(payload && payload.entries) ? payload.entries : [];
-    if (!entries.length) return { ok: false, error: 'Пустой транскрипт' };
-
-    const providerId = settings.provider || 'cloudflare';
-    const provider = providerConfig(providerId);
-    const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
-
-    if (!provider.noKey && !apiKey) return { ok: false, error: 'Нет ключа для модели' };
-    if (provider.needsAccount && !settings.cloudflareAccount) {
-      return { ok: false, error: 'Не указан Account ID Cloudflare' };
-    }
-
-    const line = (entry) => {
-      const seconds = Math.max(0, Number(entry.t) || 0);
-      const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
-      const ss = String(Math.floor(seconds % 60)).padStart(2, '0');
-      return `${mm}:${ss} ${entry.speaker}: ${entry.text}`;
-    };
-
-    const transcript = entries.map(line).join('\n');
-
-    const ask = async (messages, maxTokens, signal) => {
-      let out = '';
-      await streamChat({
-        providerId,
-        apiKey,
-        accountId: settings.cloudflareAccount || '',
-        model: settings.model,
-        messages,
-        maxTokens,
-        temperature: 0.2,
-        signal,
-        onDelta: (text) => {
-          out += text;
-        },
-      });
-      return out.trim();
-    };
-
-    const signal = AbortSignal.timeout(120000);
-
-    const SYSTEM = [
-      'Ты делаешь выжимку деловой встречи по транскрипту.',
-      'Пиши по-русски, кратко, без воды и без markdown.',
-      'Структура строго такая:',
-      '1. О чём встреча — 1–2 предложения.',
-      '2. Договорённости — списком, каждая с новой строки.',
-      '3. Решения — списком.',
-      '4. Задачи — кто и что делает, если названо; иначе просто задача.',
-      '5. Открытые вопросы и риски — списком.',
-      'Если чего-то на встрече не было — так и напиши: «не обсуждалось».',
-    ].join('\n');
-
-    const PART = [
-      'Сделай короткую выжимку фрагмента встречи: о чём говорили, что решили,',
-      'какие задачи и вопросы прозвучали. 3–6 пунктов, без воды, по-русски.',
-    ].join(' ');
-
-    try {
-      let summary = '';
-
-      if (transcript.length > 14000) {
-        const chunks = [];
-        let current = '';
-
-        for (const row of transcript.split('\n')) {
-          if ((current + row).length > 10000) {
-            if (current) chunks.push(current);
-            current = row;
-          } else {
-            current += `${row}\n`;
-          }
-        }
-        if (current.trim()) chunks.push(current);
-
-        const parts = [];
-        for (const chunk of chunks) {
-          parts.push(
-            await ask(
-              [
-                { role: 'system', content: PART },
-                { role: 'user', content: chunk },
-              ],
-              400,
-              signal
-            )
-          );
-        }
-
-        summary = await ask(
-          [
-            { role: 'system', content: SYSTEM },
-            {
-              role: 'user',
-              content: parts.map((part, index) => `Часть ${index + 1}:\n${part}`).join('\n\n'),
-            },
-          ],
-          700,
-          signal
-        );
-      } else {
-        summary = await ask(
-          [
-            { role: 'system', content: SYSTEM },
-            { role: 'user', content: transcript },
-          ],
-          700,
-          signal
-        );
-      }
-
-      if (!summary) return { ok: false, error: 'Модель не вернула выжимку' };
-      return { ok: true, summary };
-    } catch (err) {
-      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-        return { ok: false, error: 'Модель не ответила вовремя' };
-      }
-      return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('meeting:export', async (_event, payload) => {
-    const entries = Array.isArray(payload && payload.entries) ? payload.entries : [];
-    if (!entries.length) return { ok: false, error: 'Нечего экспортировать' };
-
-    const startedAt = Number(payload && payload.startedAt) || Date.now();
-    const stamp = new Date(startedAt).toLocaleString('sv-SE').replace(/[: ]/g, '-');
-
-    const result = await dialog.showSaveDialog({
-      title: 'Экспорт расшифровки',
-      defaultPath: path.join(app.getPath('documents'), `meeting-${stamp}.md`),
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
-    });
-
-    if (result.canceled || !result.filePath) return { ok: false, cancelled: true };
-
-    const lines = [
-      `# Встреча ${new Date(startedAt).toLocaleString('ru-RU')}`,
-      '',
-      `Длительность: ${Math.round((Number(payload && payload.duration) || 0) / 60)} мин`,
-      '',
-    ];
-
-    const summary = String((payload && payload.summary) || '').trim();
-    if (summary) {
-      lines.push('## Выжимка', '', summary, '');
-    }
-
-    lines.push('## Расшифровка', '');
-
-    for (const entry of entries) {
-      const seconds = Math.max(0, Number(entry.t) || 0);
-      const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
-      const ss = String(Math.floor(seconds % 60)).padStart(2, '0');
-      lines.push(`**${mm}:${ss} · ${entry.speaker}:** ${entry.text}`);
-      lines.push('');
-    }
-
-    try {
-      fs.writeFileSync(result.filePath, lines.join('\n'), 'utf8');
-      return { ok: true, path: result.filePath };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
   ipcMain.on('app:quit', () => {
     isQuitting = true;
     app.quit();
@@ -2090,9 +1630,9 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     createOverlay();
     createTray();
-    registerShortcuts();
+    hotkeys.register();
     startHoverWatch();
-    startWheelHook();
+    startWheel();
 
     // Прогрев не должен мешать старту — даём окну подняться.
     setTimeout(warmUp, 1500);
@@ -2137,18 +1677,13 @@ if (isDev) {
     get answerRegion() {
       return answerRegion;
     },
-    get answerKeysBound() {
-      return answerKeysBound;
-    },
     get settings() {
       return settings;
     },
-    get captureWin() {
-      return captureWin;
+    get hotkeys() {
+      return hotkeys.getStatus();
     },
-    get captureShot() {
-      return captureShot;
-    },
+    screenshots,
     warmUp,
   };
 }
