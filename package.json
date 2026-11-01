@@ -1,0 +1,50 @@
+{
+  "name": "suflyor",
+  "productName": "Suflyor",
+  "version": "0.2.0",
+  "description": "Оверлей-суфлёр: слушает микрофон и подсказывает короткие ответы",
+  "main": "src/main.js",
+  "author": "Alihandro",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win portable",
+    "pack": "electron-builder --dir",
+    "release": "node scripts/release.js"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.suflyor.app",
+    "productName": "Suflyor",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "portable": {
+      "artifactName": "Suflyor-${version}.exe",
+      "unpackDirName": "Suflyor"
+    }
+  }
+}

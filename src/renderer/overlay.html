@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'"
+    />
+    <title>Suflyor</title>
+    <link rel="stylesheet" href="overlay.css" />
+  </head>
+  <body data-state="idle" data-interactive="false">
+    <div class="card" id="card">
+      <div class="glow"></div>
+
+      <header class="top">
+        <div class="status">
+          <span class="dot"><span class="ring"></span></span>
+          <span class="status-text" id="statusText">Запуск…</span>
+          <span class="latency" id="latency" hidden></span>
+        </div>
+        <div class="tools">
+          <button class="icon" id="btnSource" title="Источник звука: микрофон">🎤</button>
+          <button class="icon" id="btnMic" title="Пауза (Ctrl+Space)">⏸</button>
+          <span class="hist-nav">
+            <button class="icon hist-btn" id="btnHistPrev" title="Предыдущий ответ" disabled>‹</button>
+            <span class="hist-count" id="histCount">0/0</span>
+            <button class="icon hist-btn" id="btnHistNext" title="Следующий ответ" disabled>›</button>
+            <button class="icon hist-btn" id="btnHistLatest" title="К актуальному ответу" disabled>»</button>
+          </span>
+          <button class="icon" id="btnRegen" title="Перегенерировать (Ctrl+Shift+R)">↻</button>
+          <button class="icon" id="btnClear" title="Очистить (Ctrl+Shift+X)">⌫</button>
+          <button class="icon" id="btnSettings" title="Настройки (Ctrl+Shift+S)">⚙</button>
+          <button class="icon" id="btnHide" title="Скрыть (Ctrl+Shift+Space)">✕</button>
+        </div>
+      </header>
+
+      <div class="question" id="question" hidden></div>
+
+      <main class="answer">
+        <p class="hint" id="hint">Слушаю микрофон. Задайте вопрос — ответ появится здесь.</p>
+        <div class="answer-text" id="answerText"></div>
+        <button class="icon jump-latest" id="btnJumpLatest" title="К актуальному ответу">»</button>
+      </main>
+
+      <footer class="bottom">
+        <div class="ask">
+          <input
+            id="questionInput"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="Введите вопрос и нажмите Enter…"
+          />
+        </div>
+        <div class="level" id="level"><span></span></div>
+        <div class="meta">
+          <span id="modelLabel">gpt-oss-20b</span>
+          <span class="sep">·</span>
+          <span id="keysHint">Ctrl+Shift+Space — скрыть</span>
+        </div>
+      </footer>
+    </div>
+
+    <div class="resize-handles" aria-hidden="true">
+      <div class="rz rz-n" data-dir="n"></div>
+      <div class="rz rz-s" data-dir="s"></div>
+      <div class="rz rz-w" data-dir="w"></div>
+      <div class="rz rz-e" data-dir="e"></div>
+      <div class="rz rz-nw" data-dir="nw"></div>
+      <div class="rz rz-ne" data-dir="ne"></div>
+      <div class="rz rz-sw" data-dir="sw"></div>
+      <div class="rz rz-se" data-dir="se"></div>
+    </div>
+
+    <script src="overlay.js"></script>
+  </body>
+</html>

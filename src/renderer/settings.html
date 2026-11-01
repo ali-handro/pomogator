@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'"
+    />
+    <title>Suflyor — настройки</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="head">
+        <div class="brand">
+          <span class="logo"></span>
+          <div>
+            <h1>Suflyor</h1>
+            <p>Подсказки в реальном времени</p>
+          </div>
+        </div>
+        <span class="version" id="version"></span>
+      </header>
+
+      <main class="content">
+        <section class="card">
+          <h2>Подключение</h2>
+
+          <label class="field">
+            <span class="label">Провайдер</span>
+            <select id="provider"></select>
+            <span class="hint" id="providerNote"></span>
+          </label>
+
+          <label class="field" id="accountField" hidden>
+            <span class="label">
+              Account ID
+              <a href="#" id="accountHelp" class="link">где взять →</a>
+            </span>
+            <input
+              type="text"
+              id="cloudflareAccount"
+              placeholder="ID аккаунта Cloudflare"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <span class="hint">Cloudflare → Workers AI: ID аккаунта показан справа и в адресе панели.</span>
+          </label>
+
+          <label class="field">
+            <span class="label">
+              API-ключ
+              <a href="#" id="getKey" class="link">получить ключ →</a>
+            </span>
+            <span class="input-row">
+              <input
+                type="password"
+                id="apiKey"
+                placeholder="вставьте ключ"
+                spellcheck="false"
+                autocomplete="off"
+              />
+              <button type="button" class="ghost" id="toggleKey" title="Показать">👁</button>
+            </span>
+            <span class="hint">Хранится только на этом компьютере, в файле настроек.</span>
+          </label>
+
+          <label class="field">
+            <span class="label">Модель</span>
+            <select id="model"></select>
+          </label>
+
+          <div class="test-row">
+            <button type="button" class="ghost test-btn" id="testBtn">Проверить подключение</button>
+            <span class="test-result" id="testResult"></span>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Ответы</h2>
+          <div class="grid-2">
+            <label class="field">
+              <span class="label">Стиль</span>
+              <select id="style" data-key="style">
+                <option value="concise">Коротко, 3 тезиса</option>
+                <option value="star">STAR (ситуация → действие → результат)</option>
+                <option value="technical">Технически подробно</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="label">Язык</span>
+              <select id="language" data-key="language">
+                <option value="ru">Русский</option>
+                <option value="en">Английский</option>
+                <option value="auto">Авто</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="label">
+              Длина ответа
+              <span class="value" id="wordsValue">45 слов</span>
+            </span>
+            <input type="range" id="answerWords" data-key="answerWords" min="20" max="90" step="5" />
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Звук</h2>
+
+          <label class="field">
+            <span class="label">Откуда слушать</span>
+            <select id="audioSource" data-key="audioSource">
+              <option value="mic">Микрофон</option>
+              <option value="system">Звук системы — браузер, созвон, видео</option>
+            </select>
+            <span class="hint">
+              «Звук системы» записывает то, что слышно в колонках или наушниках: созвон
+              в Яндекс Браузере, видео, плеер. Переключается и кнопкой 🎤/🎧 в шапке оверлея.
+            </span>
+          </label>
+
+          <label class="check">
+            <input type="checkbox" id="autoAnswer" data-key="autoAnswer" />
+            <span>Сразу отвечать на распознанный вопрос</span>
+          </label>
+
+          <span class="hint">
+            Включено: каждая распознанная фраза сразу уходит в модель, ответ появляется
+            сам и попадает в историю. Выключено: фраза только показывается и кладётся
+            в поле ввода — отправить её можно Enter или Ctrl+Shift+A. Полезно, когда
+            рядом говорят лишнее или хочется сначала прочитать распознанное.
+          </span>
+
+          <label class="field">
+            <span class="label">
+              Пауза, после которой вопрос считается законченным
+              <span class="value" id="silenceMsValue">450 мс</span>
+            </span>
+            <input type="range" id="silenceMs" data-key="silenceMs" min="400" max="1600" step="50" />
+          </label>
+
+          <label class="field">
+            <span class="label">Распознавание речи</span>
+            <select id="sttSource">
+              <option value="cloudflare">Облако Cloudflare — быстро, нужен интернет</option>
+              <option value="local">Локально (whisper.cpp) — без интернета и квот</option>
+            </select>
+          </label>
+
+          <label class="field" id="sttCloudBlock">
+            <span class="label">Модель в облаке</span>
+            <select id="sttModel">
+              <option value="@cf/deepgram/nova-3">Deepgram Nova — самый быстрый</option>
+              <option value="@cf/openai/whisper-large-v3-turbo">Whisper — экономнее по квоте</option>
+            </select>
+            <span class="hint">
+              Nova отвечает в 5–6 раз быстрее, но тратит заметно больше нейронов Cloudflare.
+              Whisper медленнее, зато расходует квоту в 10 раз меньше.
+            </span>
+          </label>
+
+          <div id="sttLocalBlock" hidden>
+            <label class="field">
+              <span class="label">Локальная модель</span>
+              <select id="localSttModel">
+                <option value="base">base — быстрая, ~60 МБ</option>
+                <option value="small">small — точнее, ~190 МБ</option>
+              </select>
+              <span class="hint">
+                Движок и модель скачиваются один раз в папку приложения и работают
+                без интернета. Модель остаётся в памяти, поэтому паузы между
+                вопросами нет — только время самого распознавания.
+              </span>
+            </label>
+
+            <div class="test-row">
+              <button type="button" class="ghost test-btn" id="localSttDownloadBtn">
+                Скачать движок и модель
+              </button>
+              <span class="test-result" id="localSttStatusText"></span>
+            </div>
+
+            <div class="download-bar" id="localSttBarWrap" hidden>
+              <div class="download-bar-fill" id="localSttBar"></div>
+            </div>
+          </div>
+
+          <div class="test-row">
+            <button type="button" class="ghost test-btn" id="sttTestBtn">
+              Проверить распознавание
+            </button>
+            <span class="test-result" id="sttTestResult"></span>
+          </div>
+
+          <span class="hint">
+            В облачном режиме аудио уходит на Cloudflare только когда вы говорите.
+            В локальном режиме ничего никуда не отправляется — распознавание идёт
+            на вашем компьютере.
+          </span>
+        </section>
+
+        <section class="card">
+          <h2>Контекст</h2>
+          <label class="field">
+            <span class="label">Контекст разговора (промт)</span>
+            <textarea
+              id="contextPrompt"
+              data-key="contextPrompt"
+              rows="4"
+              placeholder="О чём идёт разговор: тема, участники, термины, названия. Например: обсуждаем переход с монолита на микросервисы, Go, Kafka, Kubernetes…"
+            ></textarea>
+            <span class="hint">
+              Текст получает модель вместе с вопросом, а также распознавание речи. Так она
+              понимает тему и восстанавливает плохо расслышанные слова по смыслу.
+            </span>
+          </label>
+          <label class="field">
+            <span class="label">Резюме или краткое описание опыта</span>
+            <textarea
+              id="resume"
+              data-key="resume"
+              rows="4"
+              placeholder="6 лет backend, Go/Python, PostgreSQL, k8s. Последний проект — платёжный сервис на 2 млн запросов в сутки…"
+            ></textarea>
+          </label>
+          <label class="field">
+            <span class="label">Контекст / требования</span>
+            <textarea
+              id="job"
+              data-key="job"
+              rows="4"
+              placeholder="Senior Backend Engineer, Go, высоконагруженные системы, менторство…"
+            ></textarea>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Окно и клавиши</h2>
+
+          <div class="grid-2">
+            <label class="field">
+              <span class="label">Экран</span>
+              <select id="overlayDisplay"></select>
+            </label>
+
+            <label class="field">
+              <span class="label">
+                Прозрачность фона
+                <span class="value" id="opacityValue">94%</span>
+              </span>
+              <input type="range" id="opacity" data-key="opacity" min="0.35" max="1" step="0.01" />
+            </label>
+          </div>
+
+          <div class="grid-2">
+            <label class="field">
+              <span class="label">
+                Ширина
+                <span class="value" id="overlayWidthValue">980 px</span>
+              </span>
+              <input type="range" id="overlayWidth" data-key="overlayWidth" min="560" max="1600" step="20" />
+            </label>
+
+            <label class="field">
+              <span class="label">
+                Высота
+                <span class="value" id="overlayHeightValue">232 px</span>
+              </span>
+              <input type="range" id="overlayHeight" data-key="overlayHeight" min="160" max="520" step="10" />
+            </label>
+          </div>
+
+          <label class="check">
+            <input type="checkbox" id="clickThrough" data-key="clickThrough" />
+            <span>Пропускать клики сквозь окно (режим суфлёра)</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" id="startHidden" data-key="startHidden" />
+            <span>Запускать со скрытым оверлеем</span>
+          </label>
+
+          <div class="field hotkey-field">
+            <span class="label">Комбинация «пауза / слушать»</span>
+            <span class="input-row">
+              <input type="text" id="listenHotkey" readonly spellcheck="false" autocomplete="off" />
+              <button type="button" class="ghost" id="listenHotkeyReset" title="Сбросить на Ctrl+Space">↺</button>
+            </span>
+            <span class="hint" id="listenHotkeyStatus"></span>
+          </div>
+
+          <span class="hint">
+            Окно можно перетащить за шапку и растянуть за любой край или угол — размер
+            запоминается. Оверлей всегда скрыт от демонстрации экрана.
+          </span>
+
+          <span class="hint">Иконки в списке соответствуют кнопкам в шапке оверлея.</span>
+          <span class="hint">
+            Кнопки ‹ и › в шапке, колесо мыши и стрелки ← / → над текстом ответа листают
+            прошлые ответы; кнопка » в шапке, кнопка справа от текста или стрелка ↓
+            возвращают к актуальному. Те же действия доступны глобально по Ctrl+Shift+←,
+            Ctrl+Shift+→ и Ctrl+Shift+↓. Пока вы читаете прошлый ответ, новые ответы
+            копятся в истории и не переключают экран. История хранится до перезапуска.
+          </span>
+
+          <div class="keys">
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd><span class="key-label">показать / скрыть</span><span class="key-icon" title="Кнопка ✕ в шапке">✕</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>E</kbd><span class="key-label">режим кликов и перетаскивания</span><span class="key-icon" title="Курсор">🖱</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>A</kbd><span class="key-label">ответить сейчас</span><span class="key-icon" title="Ручной ввод">⏎</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd><span class="key-label">перегенерировать</span><span class="key-icon" title="Кнопка ↻ в шапке">↻</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>X</kbd><span class="key-label">очистить</span><span class="key-icon" title="Кнопка ⌫ в шапке">⌫</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>↑</kbd><span class="key-label">прошлый ответ</span><span class="key-icon" title="Кнопка ‹ в шапке">‹</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>↓</kbd><span class="key-label">следующий ответ</span><span class="key-icon" title="Кнопка › в шапке">›</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>→</kbd><span class="key-label">к актуальному ответу</span><span class="key-icon" title="Кнопка » в шапке и справа от текста">»</span></div>
+            <div id="listenKeysRow"><kbd>Ctrl</kbd><kbd>Space</kbd><span class="key-label">пауза / слушать</span><span class="key-icon" title="Кнопка ⏸ / ▶ в шапке">⏸</span></div>
+            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd><span class="key-label">настройки</span><span class="key-icon" title="Кнопка ⚙ в шапке">⚙</span></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="foot">
+        <span class="saved" id="saved">Сохранено</span>
+        <span class="foot-note">Изменения применяются сразу</span>
+      </footer>
+    </div>
+
+    <script src="settings.js"></script>
+  </body>
+</html>
