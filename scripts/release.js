@@ -84,7 +84,7 @@ function cleanup() {
 
 try {
   run('git', ['add', '-A']);
-  run('git', ['commit', '-m', `release: v${version}`]);
+  run('git', ['commit', '-m', `"release: v${version}"`]);
   run('git', ['tag', `v${version}`]);
   console.log(`Тег v${version} создан`);
 } catch (err) {
