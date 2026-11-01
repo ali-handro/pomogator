@@ -27,6 +27,7 @@ const isDev = process.argv.includes('--dev');
 
 let overlayWin = null;
 let settingsWin = null;
+let trainerWin = null;
 let tray = null;
 let isQuitting = false;
 let activeAbort = null;
@@ -457,6 +458,18 @@ function lowerOverlayForSettings(lower) {
   else overlayWin.setAlwaysOnTop(true, 'screen-saver');
 }
 
+/** Есть ли открытое вспомогательное окно (настройки, тренажёр). */
+function auxWindowOpen() {
+  return (
+    (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible()) ||
+    (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible())
+  );
+}
+
+function syncOverlayTop() {
+  lowerOverlayForSettings(auxWindowOpen());
+}
+
 function createSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.show();
@@ -491,10 +504,9 @@ function createSettings() {
     },
   });
 
-  lowerOverlayForSettings(true);
+  syncOverlayTop();
 
   settingsWin.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
-
   settingsWin.webContents.on('did-fail-load', (_e, code, desc) => {
     console.error('[settings] load failed', code, desc);
   });
@@ -508,10 +520,65 @@ function createSettings() {
 
   settingsWin.on('closed', () => {
     settingsWin = null;
-    lowerOverlayForSettings(false);
+    syncOverlayTop();
   });
 
   settingsWin.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
+/**
+ * Тренажёр собеседования: отдельное окно с вопросами, таймером и опорными
+ * пунктами. Ничего не записывает и никуда не отправляет.
+ */
+function createTrainer() {
+  if (trainerWin && !trainerWin.isDestroyed()) {
+    trainerWin.show();
+    trainerWin.focus();
+    return;
+  }
+
+  const work = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(760, work.width - 80);
+  const height = Math.min(700, work.height - 80);
+
+  trainerWin = new BrowserWindow({
+    width,
+    height,
+    x: Math.round(work.x + (work.width - width) / 2),
+    y: Math.round(work.y + (work.height - height) / 2),
+    minWidth: 560,
+    minHeight: 520,
+    alwaysOnTop: false,
+    title: 'Suflyor — тренажёр',
+    backgroundColor: '#0b0f16',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  syncOverlayTop();
+  trainerWin.loadFile(path.join(__dirname, 'renderer', 'trainer.html'));
+
+  trainerWin.once('ready-to-show', () => {
+    if (!trainerWin || trainerWin.isDestroyed()) return;
+    trainerWin.show();
+    trainerWin.focus();
+  });
+
+  trainerWin.on('closed', () => {
+    trainerWin = null;
+    syncOverlayTop();
+  });
+
+  trainerWin.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -630,6 +697,14 @@ function onOverlayWheel(wParam) {
   }, 45);
 }
 
+/** Открыто и в фокусе ли вспомогательное окно (настройки, тренажёр). */
+function auxFocused() {
+  return (
+    (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible() && settingsWin.isFocused()) ||
+    (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible() && trainerWin.isFocused())
+  );
+}
+
 function startHoverWatch() {
   if (hoverTimer) return;
 
@@ -640,7 +715,7 @@ function startHoverWatch() {
     // Пока пользователь работает с настройками, не трогаем перехват мыши:
     // переключения прозрачности на ходу заставляют окна перерисовываться.
     // Как только настройки теряют фокус (вернулись в приложение), всё работает.
-    if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible() && settingsWin.isFocused()) {
+    if (auxFocused()) {
       setAnswerKeysBound(false);
       if (hoveringHeader) {
         hoveringHeader = false;
@@ -809,6 +884,7 @@ function buildTrayMenu() {
       ? [{ label: 'Переместить на другой экран', click: cycleOverlayDisplay }]
       : []),
     { type: 'separator' },
+    { label: 'Тренажёр собеседования…', click: createTrainer },
     { label: 'Настройки…', click: createSettings },
     { type: 'separator' },
     {
@@ -1619,6 +1695,7 @@ function registerIpc() {
   });
 
   ipcMain.on('settings:open', createSettings);
+  ipcMain.on('trainer:open', createTrainer);
   ipcMain.on('app:quit', () => {
     isQuitting = true;
     app.quit();

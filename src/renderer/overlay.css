@@ -282,6 +282,31 @@ body.browsing .hist-count {
   background: rgba(255, 255, 255, 0.07);
 }
 
+/* Эмодзи-глифы (камера, лупа) сидят на другой базовой линии, чем символы
+   ↻ ⌫ ⚙ — поднимаем их, чтобы строка кнопок выглядела ровно. */
+#btnCapture,
+#btnReview {
+  font-size: 13px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+/* Настройки — единственная кнопка, которая нужна всегда: делаем заметнее. */
+#btnSettings {
+  width: 28px;
+  height: 26px;
+  font-size: 15px;
+  color: #e6edfb;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+#btnSettings:hover {
+  color: #ffffff;
+  background: rgba(110, 168, 255, 0.22);
+  border-color: rgba(110, 168, 255, 0.45);
+}
+
 /* ---------- вопрос ---------- */
 
 .question {
@@ -425,10 +450,6 @@ body.browsing .jump-latest {
 
 body[data-interactive="true"] .ask {
   display: block;
-}
-
-body[data-interactive="true"] .meta {
-  display: none;
 }
 
 .ask input {

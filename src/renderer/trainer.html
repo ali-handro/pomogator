@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'"
+    />
+    <title>Suflyor — тренажёр</title>
+    <link rel="stylesheet" href="trainer.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="dot"></span>
+        Тренажёр собеседования
+      </div>
+      <button class="icon" id="btnClose" title="Закрыть">✕</button>
+    </header>
+
+    <main>
+      <div class="row">
+        <label class="field">
+          <span class="label">Направление</span>
+          <select id="category"></select>
+        </label>
+        <div class="progress" id="progress">Вопрос 0 из 0</div>
+      </div>
+
+      <section class="card">
+        <div class="qhead">
+          <span class="qnum" id="qnum">Вопрос</span>
+          <span class="timer" id="timer">2:00</span>
+        </div>
+
+        <h1 class="question" id="question">Загрузка…</h1>
+
+        <div class="actions">
+          <button type="button" class="ghost" id="btnStart">Старт</button>
+          <button type="button" class="ghost" id="btnHints">Показать опорные пункты</button>
+          <button type="button" class="ghost primary" id="btnNext">Следующий вопрос</button>
+        </div>
+
+        <ul class="hints" id="hints" hidden></ul>
+      </section>
+
+      <p class="note">
+        Отвечайте вслух 1–2 минуты, как на настоящем собеседовании. Опорные пункты
+        открывайте после ответа — так тренировка честнее. Тренажёр ничего не записывает.
+      </p>
+    </main>
+
+    <script src="questions.js"></script>
+    <script src="trainer.js"></script>
+  </body>
+</html>

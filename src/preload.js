@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
   noteWheelHandled: () => ipcRenderer.send('overlay:wheel-handled'),
   hideOverlay: () => ipcRenderer.send('overlay:hide'),
   openSettings: () => ipcRenderer.send('settings:open'),
+  openTrainer: () => ipcRenderer.send('trainer:open'),
 
   /* события из главного процесса */
   onAction: (name, cb) => subscribe(`action:${name}`, cb),

@@ -91,6 +91,12 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 /* ---------- секции ---------- */
 
 .content {
