@@ -23,6 +23,7 @@ const el = {
   question: document.getElementById('question'),
   hint: document.getElementById('hint'),
   answerText: document.getElementById('answerText'),
+  answer: document.querySelector('.answer'),
   level: document.getElementById('level'),
   modelLabel: document.getElementById('modelLabel'),
   keysHint: document.getElementById('keysHint'),
@@ -143,7 +144,7 @@ function pushAnswerRegion() {
     return;
   }
 
-  const rects = [el.answerText.getBoundingClientRect()];
+  const rects = [(el.answer || el.answerText).getBoundingClientRect()];
   if (el.btnJumpLatest && document.body.classList.contains('browsing')) {
     rects.push(el.btnJumpLatest.getBoundingClientRect());
   }
@@ -259,7 +260,7 @@ function onAnswerKeydown(event) {
 
   const target = event.target;
   if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-  if (!el.answerText.matches(':hover')) return;
+  if (!el.answer.matches(':hover')) return;
 
   if (event.key === 'ArrowLeft') {
     event.preventDefault();
@@ -1057,7 +1058,7 @@ function bindUi() {
   if (el.btnHistLatest) el.btnHistLatest.addEventListener('click', latestAnswer);
   if (el.btnJumpLatest) el.btnJumpLatest.addEventListener('click', latestAnswer);
 
-  el.answerText.addEventListener('wheel', onAnswerWheel, { passive: false });
+  (el.answer || el.answerText).addEventListener('wheel', onAnswerWheel, { passive: false });
   document.addEventListener('keydown', onAnswerKeydown);
   window.addEventListener('resize', scheduleRegionUpdate);
   el.btnRegen.addEventListener('click', () => {

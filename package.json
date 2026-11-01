@@ -1,7 +1,7 @@
 {
   "name": "suflyor",
   "productName": "Suflyor",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Оверлей-суфлёр: слушает микрофон и подсказывает короткие ответы",
   "main": "src/main.js",
   "author": "Alihandro",
