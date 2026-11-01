@@ -36,6 +36,8 @@ const el = {
   btnJumpLatest: document.getElementById('btnJumpLatest'),
   btnCapture: document.getElementById('btnCapture'),
   btnReview: document.getElementById('btnReview'),
+  btnCopy: document.getElementById('btnCopy'),
+  toast: document.getElementById('toast'),
   histCount: document.getElementById('histCount'),
   btnRegen: document.getElementById('btnRegen'),
   btnClear: document.getElementById('btnClear'),
@@ -425,6 +427,41 @@ async function solveScreenshot(mode = 'solve') {
     }
   } catch (err) {
     if (answerHistory[historyIndex] === entry) setState('error', err.message);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Копирование ответа                                                 */
+/* ------------------------------------------------------------------ */
+
+let toastTimer = 0;
+
+function showToast(text) {
+  if (!el.toast) return;
+
+  el.toast.textContent = text;
+  el.toast.hidden = false;
+
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.toast.hidden = true;
+  }, 1600);
+}
+
+async function copyAnswer() {
+  const text = el.answerText.textContent.trim();
+
+  if (!text) {
+    showToast('Пока нечего копировать');
+    return;
+  }
+
+  try {
+    await window.api.copyText(text);
+    showToast('Скопировано');
+  } catch (err) {
+    console.error('[copy]', err);
+    showToast('Не удалось скопировать');
   }
 }
 
@@ -1066,6 +1103,7 @@ function bindUi() {
   });
   if (el.btnCapture) el.btnCapture.addEventListener('click', () => solveScreenshot('solve'));
   if (el.btnReview) el.btnReview.addEventListener('click', () => solveScreenshot('review'));
+  if (el.btnCopy) el.btnCopy.addEventListener('click', copyAnswer);
   el.btnClear.addEventListener('click', clearCurrent);
   el.btnHide.addEventListener('click', () => {
     if (hasApi) window.api.hideOverlay();

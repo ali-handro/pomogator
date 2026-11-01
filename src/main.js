@@ -13,6 +13,7 @@ const {
   shell,
   desktopCapturer,
   net,
+  clipboard,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -1251,6 +1252,11 @@ function registerIpc() {
   });
 
   ipcMain.handle('hotkeys:get-status', () => hotkeys.getStatus());
+
+  ipcMain.handle('clipboard:write', (_event, text) => {
+    clipboard.writeText(String(text || ''));
+    return { ok: true };
+  });
 
   ipcMain.handle('displays:get', () => {
     const primaryId = screen.getPrimaryDisplay().id;
