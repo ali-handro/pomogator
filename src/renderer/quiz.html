@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'"
+    />
+    <title>Suflyor — тесты</title>
+    <link rel="stylesheet" href="quiz.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="dot"></span>
+        <span>Тесты</span>
+      </div>
+      <button class="icon" id="btnClose" title="Закрыть">✕</button>
+    </header>
+
+    <div class="row">
+      <label class="field">
+        <span class="label">Тема</span>
+        <select id="category"></select>
+      </label>
+      <div class="stats">
+        <span id="progress">Вопрос 0 из 0</span>
+        <span class="score" id="score">Верно: 0</span>
+      </div>
+    </div>
+
+    <div class="bar"><span id="barFill"></span></div>
+
+    <section class="card" id="card">
+      <div class="qnum" id="qnum">Вопрос</div>
+      <h1 class="question" id="question">Загрузка…</h1>
+      <div class="options" id="options"></div>
+      <div class="explain" id="explain" hidden></div>
+      <div class="actions">
+        <button type="button" class="ghost primary" id="btnNext" hidden>Следующий вопрос</button>
+      </div>
+    </section>
+
+    <section class="card result" id="result" hidden>
+      <h2 id="resultTitle">Результат</h2>
+      <p id="resultText"></p>
+      <div class="actions">
+        <button type="button" class="ghost primary" id="btnRestart">Пройти заново</button>
+      </div>
+    </section>
+
+    <script src="quiz-questions.js"></script>
+    <script src="quiz.js"></script>
+  </body>
+</html>

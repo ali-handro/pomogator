@@ -656,6 +656,10 @@ function bind() {
     if (hasApi) window.api.openMeeting();
   });
 
+  $('quizBtn').addEventListener('click', () => {
+    if (hasApi) window.api.openQuiz();
+  });
+
   $('sttTestBtn').addEventListener('click', async () => {
     const btn = $('sttTestBtn');
     const out = $('sttTestResult');

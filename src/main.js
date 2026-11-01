@@ -30,6 +30,7 @@ let overlayWin = null;
 let settingsWin = null;
 let trainerWin = null;
 let meetingWin = null;
+let quizWin = null;
 let tray = null;
 let isQuitting = false;
 let activeAbort = null;
@@ -464,7 +465,8 @@ function auxWindowOpen() {
   return (
     (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible()) ||
     (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible()) ||
-    (meetingWin && !meetingWin.isDestroyed() && meetingWin.isVisible())
+    (meetingWin && !meetingWin.isDestroyed() && meetingWin.isVisible()) ||
+    (quizWin && !quizWin.isDestroyed() && quizWin.isVisible())
   );
 }
 
@@ -641,6 +643,58 @@ function createMeeting() {
   });
 }
 
+/** Тесты: вопросы с вариантами ответов, объяснением и счётом. */
+function createQuiz() {
+  if (quizWin && !quizWin.isDestroyed()) {
+    quizWin.show();
+    quizWin.focus();
+    return;
+  }
+
+  const work = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(820, work.width - 80);
+  const height = Math.min(720, work.height - 80);
+
+  quizWin = new BrowserWindow({
+    width,
+    height,
+    x: Math.round(work.x + (work.width - width) / 2),
+    y: Math.round(work.y + (work.height - height) / 2),
+    minWidth: 600,
+    minHeight: 540,
+    alwaysOnTop: false,
+    title: 'Suflyor — тесты',
+    backgroundColor: '#0b0f16',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  syncOverlayTop();
+  quizWin.loadFile(path.join(__dirname, 'renderer', 'quiz.html'));
+
+  quizWin.once('ready-to-show', () => {
+    if (!quizWin || quizWin.isDestroyed()) return;
+    quizWin.show();
+    quizWin.focus();
+  });
+
+  quizWin.on('closed', () => {
+    quizWin = null;
+    syncOverlayTop();
+  });
+
+  quizWin.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
 function toggleOverlay() {
   if (!overlayWin || overlayWin.isDestroyed()) {
     createOverlay();
@@ -774,7 +828,8 @@ function auxFocused() {
   return (
     (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible() && settingsWin.isFocused()) ||
     (trainerWin && !trainerWin.isDestroyed() && trainerWin.isVisible() && trainerWin.isFocused()) ||
-    (meetingWin && !meetingWin.isDestroyed() && meetingWin.isVisible() && meetingWin.isFocused())
+    (meetingWin && !meetingWin.isDestroyed() && meetingWin.isVisible() && meetingWin.isFocused()) ||
+    (quizWin && !quizWin.isDestroyed() && quizWin.isVisible() && quizWin.isFocused())
   );
 }
 
@@ -958,6 +1013,7 @@ function buildTrayMenu() {
       : []),
     { type: 'separator' },
     { label: 'Тренажёр собеседования…', click: createTrainer },
+    { label: 'Тесты…', click: createQuiz },
     { label: 'Запись встречи…', click: createMeeting },
     { label: 'Настройки…', click: createSettings },
     { type: 'separator' },
@@ -1786,6 +1842,7 @@ function registerIpc() {
 
   ipcMain.on('settings:open', createSettings);
   ipcMain.on('trainer:open', createTrainer);
+  ipcMain.on('quiz:open', createQuiz);
   ipcMain.on('meeting:open', createMeeting);
 
   // Пока идёт запись встречи, суфлёр не слушает микрофон.

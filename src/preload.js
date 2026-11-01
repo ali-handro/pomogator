@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('api', {
   hideOverlay: () => ipcRenderer.send('overlay:hide'),
   openSettings: () => ipcRenderer.send('settings:open'),
   openTrainer: () => ipcRenderer.send('trainer:open'),
+  openQuiz: () => ipcRenderer.send('quiz:open'),
   openMeeting: () => ipcRenderer.send('meeting:open'),
 
   /* запись встречи */
