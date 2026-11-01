@@ -1,0 +1,14 @@
+{
+  "name": "pomogator-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API Помогатора: аккаунты, устройства, баланс",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  }
+}
