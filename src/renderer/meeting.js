@@ -13,6 +13,7 @@ const state = {
   elapsed: 0,
   timerId: 0,
   entries: [],
+  summary: '',
   ctx: null,
   streams: [],
   channels: null,
@@ -254,6 +255,36 @@ function addEntry(at, speaker, text) {
   renderEntry(entry);
   $('btnExport').disabled = false;
   $('btnClear').disabled = false;
+  $('btnSummary').disabled = false;
+}
+
+function renderSummary(text) {
+  $('summaryText').textContent = text;
+  $('summaryBox').hidden = false;
+}
+
+async function makeSummary() {
+  if (!state.entries.length) return;
+
+  $('btnSummary').disabled = true;
+  setStatus('Делаю выжимку…');
+
+  try {
+    const result = await window.api.meetingSummary({ entries: state.entries });
+
+    if (result && result.ok && result.summary) {
+      state.summary = result.summary;
+      renderSummary(result.summary);
+      setStatus('Выжимка готова');
+      await saveMeeting();
+    } else {
+      setStatus((result && result.error) || 'Не удалось сделать выжимку');
+    }
+  } catch (err) {
+    setStatus(`Выжимка: ${err.message}`);
+  } finally {
+    $('btnSummary').disabled = state.entries.length === 0;
+  }
 }
 
 function tick() {
@@ -410,16 +441,8 @@ async function stop() {
   await waitQueues();
 
   if (state.entries.length) {
-    try {
-      const result = await window.api.meetingSave({
-        startedAt: state.startedAt,
-        duration: Math.round(state.elapsed),
-        entries: state.entries,
-      });
-      setStatus(result && result.ok ? 'Расшифровка сохранена' : 'Не удалось сохранить');
-    } catch (err) {
-      setStatus(`Не удалось сохранить: ${err.message}`);
-    }
+    const saved = await saveMeeting();
+    setStatus(saved ? 'Расшифровка сохранена' : 'Не удалось сохранить');
   } else {
     setStatus('Речь не распознана');
   }
@@ -428,8 +451,28 @@ async function stop() {
   $('btnClear').disabled = state.entries.length === 0;
 }
 
+async function saveMeeting() {
+  if (!state.entries.length) return false;
+
+  try {
+    const result = await window.api.meetingSave({
+      startedAt: state.startedAt,
+      duration: Math.round(state.elapsed),
+      entries: state.entries,
+      summary: state.summary,
+    });
+    return !!(result && result.ok);
+  } catch (err) {
+    console.error('[meeting] save failed', err);
+    return false;
+  }
+}
+
 function clear() {
   state.entries = [];
+  state.summary = '';
+  $('summaryBox').hidden = true;
+  $('summaryText').textContent = '';
   $('transcript').innerHTML =
     '<p class="empty" id="empty">Нажмите «Записать» — Суфлёр запишет микрофон и звук системы, а здесь появится расшифровка с разделением на вас и собеседника. Аудио нигде не сохраняется.</p>';
   $('btnExport').disabled = true;
@@ -450,6 +493,7 @@ async function exportMarkdown() {
       startedAt: state.startedAt,
       duration: Math.round(state.elapsed),
       entries: state.entries,
+      summary: state.summary,
     });
     if (result && result.ok) setStatus(`Сохранено: ${result.path}`);
     else if (result && result.error) setStatus(result.error);
@@ -467,6 +511,10 @@ function boot() {
   $('btnClose').addEventListener('click', () => window.close());
   $('btnExport').addEventListener('click', exportMarkdown);
   $('btnClear').addEventListener('click', clear);
+  $('btnSummary').addEventListener('click', makeSummary);
+  $('btnSummaryClose').addEventListener('click', () => {
+    $('summaryBox').hidden = true;
+  });
 
   window.addEventListener('beforeunload', () => {
     if (state.running) {
@@ -475,8 +523,6 @@ function boot() {
       if (window.api.setMeetingRecording) window.api.setMeetingRecording(false);
     }
   });
-
-  $('btnSummary').title = 'Появится в следующей версии';
 }
 
 window.addEventListener('DOMContentLoaded', boot);

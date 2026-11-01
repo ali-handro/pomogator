@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   /* запись встречи */
   meetingSave: (data) => ipcRenderer.invoke('meeting:save', data),
   meetingExport: (data) => ipcRenderer.invoke('meeting:export', data),
+  meetingSummary: (data) => ipcRenderer.invoke('meeting:summary', data),
   setMeetingRecording: (value) => ipcRenderer.send('meeting:recording', value),
   onMeetingRecording: (cb) => subscribe('meeting:recording', cb),
 
