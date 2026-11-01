@@ -541,7 +541,7 @@ function createSettings() {
     // z-порядок и окно настроек мерцает при перетаскивании. Настройки
     // обычные, а оверлей на время настройки опускаем.
     alwaysOnTop: false,
-    title: 'Suflyor — настройки',
+    title: 'Помогатор — настройки',
     backgroundColor: '#0b0f16',
     autoHideMenuBar: true,
     show: false,
@@ -601,7 +601,7 @@ function createTrainer() {
     minWidth: 560,
     minHeight: 520,
     alwaysOnTop: false,
-    title: 'Suflyor — тренажёр',
+    title: 'Помогатор — тренажёр',
     backgroundColor: '#0b0f16',
     autoHideMenuBar: true,
     show: false,
@@ -656,7 +656,7 @@ function createMeeting() {
     minWidth: 620,
     minHeight: 520,
     alwaysOnTop: false,
-    title: 'Suflyor — запись встречи',
+    title: 'Помогатор — запись встречи',
     backgroundColor: '#0b0f16',
     autoHideMenuBar: true,
     show: false,
@@ -708,7 +708,7 @@ function createQuiz() {
     minWidth: 600,
     minHeight: 540,
     alwaysOnTop: false,
-    title: 'Suflyor — тесты',
+    title: 'Помогатор — тесты',
     backgroundColor: '#0b0f16',
     autoHideMenuBar: true,
     show: false,
@@ -1019,7 +1019,7 @@ function refreshTrayMenu() {
 
 function createTray() {
   tray = new Tray(trayIcon());
-  tray.setToolTip('Suflyor — суфлёр');
+  tray.setToolTip('Помогатор');
   refreshTrayMenu();
   tray.on('click', toggleOverlay);
 }
@@ -1070,7 +1070,7 @@ function warmUp() {
       .fetch(`${resolveBaseUrl(provider, settings.cloudflareAccount)}/models`, {
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'User-Agent': 'Suflyor/0.1.0 (overlay assistant)',
+          'User-Agent': 'Pomogator/0.1.0 (overlay assistant)',
         },
       })
       .catch(() => {});
@@ -1616,8 +1616,35 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.whenReady().then(() => {
-    app.setAppUserModelId('com.suflyor.app');
+  /**
+ * Приложение переименовано из Suflyor: переносим настройки и локальные модели
+ * из старой папки, чтобы ключи и скачанный whisper не пропали.
+ */
+function migrateLegacyData() {
+  try {
+    const target = app.getPath('userData');
+    const legacy = path.join(app.getPath('appData'), 'Suflyor');
+
+    if (!fs.existsSync(legacy)) return;
+    if (fs.existsSync(path.join(target, 'settings.json'))) return;
+
+    fs.mkdirSync(target, { recursive: true });
+
+    for (const name of ['settings.json', 'whisper']) {
+      const from = path.join(legacy, name);
+      if (!fs.existsSync(from)) continue;
+      fs.cpSync(from, path.join(target, name), { recursive: true });
+    }
+
+    console.log('[migrate] данные перенесены из Suflyor');
+  } catch (err) {
+    console.warn('[migrate]', err.message);
+  }
+}
+
+app.whenReady().then(() => {
+    app.setAppUserModelId('com.pomogator.app');
+    migrateLegacyData();
     loadSettings();
 
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -1677,7 +1704,7 @@ module.exports = { isQuitting };
 
 // Только для отладки в dev-режиме (--inspect).
 if (isDev) {
-  global.__suflyor = {
+  global.__pomogator = {
     screen,
     globalShortcut,
     get overlayWin() {

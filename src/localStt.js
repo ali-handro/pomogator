@@ -11,7 +11,7 @@ const { app, net: electronNet } = require('electron');
  * Локальное распознавание речи через whisper.cpp.
  *
  * Движок и модель не входят в сборку: они скачиваются по кнопке в настройках
- * в %APPDATA%\Suflyor\whisper. Модель остаётся загруженной в памяти
+ * в %APPDATA%\Pomogator\whisper. Модель остаётся загруженной в памяти
  * (whisper-server), поэтому на распознавание уходит только инференс.
  */
 
@@ -109,7 +109,7 @@ async function downloadFile(url, target, onProgress) {
   const partial = `${target}.part`;
 
   const res = await electronNet.fetch(url, {
-    headers: { 'User-Agent': 'Suflyor/0.1.0 (overlay assistant)' },
+    headers: { 'User-Agent': 'Pomogator/0.1.0 (overlay assistant)' },
   });
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 

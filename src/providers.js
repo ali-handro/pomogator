@@ -178,7 +178,7 @@ const OPENCODE_SESSION_ID = require('crypto').randomUUID();
 function extraHeaders(providerId) {
   if (providerId !== 'opencode') return null;
   return {
-    'User-Agent': 'Suflyor/0.1.0 (overlay assistant)',
+    'User-Agent': 'Pomogator/0.1.0 (overlay assistant)',
     'x-opencode-session': OPENCODE_SESSION_ID,
   };
 }

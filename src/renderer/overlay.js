@@ -1258,7 +1258,7 @@ async function boot() {
 window.addEventListener('DOMContentLoaded', boot);
 
 // Удобно дергать из DevTools.
-window.__suflyor = {
+window.__pomogator = {
   setState,
   get state() {
     return state;
