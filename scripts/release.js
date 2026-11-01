@@ -47,6 +47,40 @@ const target = path.join(desktop, `Suflyor-${version}.exe`);
 fs.copyFileSync(artifact, target);
 console.log('\nСкопировано на рабочий стол:', target);
 
+// Уборка мусора после сборки и тестовых запусков.
+cleanup();
+
+function cleanup() {
+  // Распакованная сборка нужна только на время упаковки — это ~400 МБ.
+  const unpacked = path.join(ROOT, 'dist', 'win-unpacked');
+  fs.rmSync(unpacked, { recursive: true, force: true });
+
+  // Portable-exe распаковывается в %TEMP%\nsXXXX.tmp (~400 МБ). При штатном
+  // выходе он удаляет папку сам, но после принудительных перезапусков они
+  // копятся. Чистим только старые (>1 часа) и только свои (с app-64.7z).
+  const temp = process.env.TEMP || '';
+  if (!temp) return;
+
+  let removed = 0;
+  const now = Date.now();
+  for (const entry of fs.readdirSync(temp, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^ns.*\.tmp$/i.test(entry.name)) continue;
+    const full = path.join(temp, entry.name);
+    try {
+      const stat = fs.statSync(full);
+      if (now - stat.mtimeMs < 60 * 60 * 1000) continue;
+      if (!fs.existsSync(path.join(full, 'app-64.7z'))) continue;
+      fs.rmSync(full, { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      /* папка занята — пропускаем */
+    }
+  }
+
+  if (removed) console.log(`Убрано временных папок запуска: ${removed}`);
+  console.log('Уборка завершена.');
+}
+
 try {
   run('git', ['add', 'package.json', 'package-lock.json', 'CHANGELOG.md']);
   run('git', ['commit', '-m', `release: v${version}`]);
