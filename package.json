@@ -1,7 +1,7 @@
 {
   "name": "suflyor",
   "productName": "Suflyor",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Оверлей-суфлёр: слушает микрофон и подсказывает короткие ответы",
   "main": "src/main.js",
   "author": "Alihandro",
@@ -28,8 +28,13 @@
     "files": [
       "src/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/uiohook-napi/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**"
+    ],
+    "npmRebuild": false,
     "asar": true,
     "win": {
       "target": [
@@ -46,5 +51,8 @@
       "artifactName": "Suflyor-${version}.exe",
       "unpackDirName": "Suflyor"
     }
+  },
+  "dependencies": {
+    "uiohook-napi": "^1.5.5"
   }
 }

@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('api', {
   resizeEnd: () => ipcRenderer.send('overlay:resize-end'),
   setAnswerRegion: (region) => ipcRenderer.send('overlay:answer-region', region),
   noteWheelHandled: () => ipcRenderer.send('overlay:wheel-handled'),
+  onWheelConsumed: (cb) => subscribe('overlay:wheel-consumed', cb),
   hideOverlay: () => ipcRenderer.send('overlay:hide'),
   openSettings: () => ipcRenderer.send('settings:open'),
   openTrainer: () => ipcRenderer.send('trainer:open'),

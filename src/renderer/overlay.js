@@ -225,11 +225,15 @@ function latestAnswer() {
 const WHEEL_STEP = 40;
 let wheelAccum = 0;
 let wheelLockUntil = 0;
+// Глобальный хук в главном процессе уже перелистнул — не дублируем.
+let wheelSuppressUntil = 0;
 
 function onAnswerWheel(event) {
   if (!answerHistory.length) return;
 
   event.preventDefault();
+
+  if (Date.now() < wheelSuppressUntil) return;
 
   const now = performance.now();
   if (now < wheelLockUntil) return;
@@ -1092,6 +1096,13 @@ function bindIpc() {
   window.api.onClickThrough((value) => {
     document.body.dataset.interactive = String(!value);
   });
+
+  // Главный процесс обработал колесо глобальным хуком — не листаем второй раз.
+  if (window.api.onWheelConsumed) {
+    window.api.onWheelConsumed(() => {
+      wheelSuppressUntil = Date.now() + 250;
+    });
+  }
 
   // Главный процесс сам переключился на резервную модель распознавания.
   window.api.onSttNotice((text) => {

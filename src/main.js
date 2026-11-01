@@ -388,7 +388,6 @@ function createOverlay() {
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWin.setMenuBarVisibility(false);
-  overlayWin.hookWindowMessage(WM_MOUSEWHEEL, (wParam) => onOverlayWheel(wParam));
   overlayWin.loadFile(path.join(__dirname, 'renderer', 'overlay.html'));
 
   overlayWin.once('ready-to-show', () => {
@@ -708,13 +707,12 @@ function setAnswerKeysBound(value) {
   }
 }
 
-/* Колесо мыши в режиме суфлёра доходит до окна, но Chromium не передаёт его
-   renderer'у, пока окно не в фокусе. Ловим WM_MOUSEWHEEL в главном процессе
-   и листаем историю сами. */
-const WM_MOUSEWHEEL = 0x020a;
-const WHEEL_STEP = 60;
-let wheelAccum = 0;
+/* Колесо мыши над текстом ответа. Окно оверлея почти всегда не в фокусе, а
+   Windows отдаёт колесо активному окну — поэтому слушаем глобально
+   низкоуровневым хуком и листаем историю сами. */
+const WHEEL_LOCK_MS = 140;
 let wheelLockUntil = 0;
+let wheelHookStarted = false;
 
 function cursorInAnswerRegion() {
   if (!overlayWin || overlayWin.isDestroyed() || !answerRegion) return false;
@@ -728,31 +726,47 @@ function cursorInAnswerRegion() {
   );
 }
 
-function onOverlayWheel(wParam) {
-  if (!settings.clickThrough) return;
+function onGlobalWheel(event) {
+  if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) return;
+  if (captureWin) return;
   if (!cursorInAnswerRegion()) return;
-  if (!wParam || wParam.length < 4) return;
 
-  const delta = wParam.readInt16LE(2); // старшее слово — величина прокрутки
-  if (!delta) return;
+  const rotation = Number(event && event.rotation) || 0;
+  if (!rotation) return;
 
   const now = Date.now();
   if (now < wheelLockUntil) return;
 
-  wheelAccum += delta;
-  if (Math.abs(wheelAccum) < WHEEL_STEP) return;
+  wheelLockUntil = now + WHEEL_LOCK_MS;
+  sendToOverlay(`action:${rotation < 0 ? 'history-prev' : 'history-next'}`);
+  // Renderer мог получить то же колесо — гасим повтор.
+  sendToOverlay('overlay:wheel-consumed');
+}
 
-  const action = wheelAccum > 0 ? 'history-prev' : 'history-next';
-  wheelAccum = 0;
-  wheelLockUntil = now + 140;
+function startWheelHook() {
+  if (wheelHookStarted) return;
 
-  // Если окно получило колесо, его уже обработал renderer — тогда не листаем
-  // второй раз. Небольшая задержка нужна, чтобы это стало известно.
-  const stamp = now;
-  setTimeout(() => {
-    if (lastRendererWheelAt >= stamp) return;
-    sendToOverlay(`action:${action}`);
-  }, 45);
+  try {
+    const { uIOhook } = require('uiohook-napi');
+    uIOhook.on('wheel', onGlobalWheel);
+    uIOhook.start();
+    wheelHookStarted = true;
+    console.log('[wheel] global hook started');
+  } catch (err) {
+    console.warn('[wheel] global hook unavailable:', err.message);
+  }
+}
+
+function stopWheelHook() {
+  if (!wheelHookStarted) return;
+
+  try {
+    const { uIOhook } = require('uiohook-napi');
+    uIOhook.stop();
+  } catch {
+    /* хук уже остановлен */
+  }
+  wheelHookStarted = false;
 }
 
 /** Открыто и в фокусе ли вспомогательное окно (настройки, тренажёр). */
@@ -2021,6 +2035,7 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     registerShortcuts();
     startHoverWatch();
+    startWheelHook();
 
     // Прогрев не должен мешать старту — даём окну подняться.
     setTimeout(warmUp, 1500);
@@ -2043,6 +2058,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    stopWheelHook();
     localStt.stopServer();
   });
 
