@@ -43,7 +43,6 @@ let providers = FALLBACK_PROVIDERS;
 let displays = [];
 let saveTimer = null;
 let toastTimer = null;
-let capturingHotkey = false;
 let lastHotkeyStatus = { failed: [] };
 
 const $ = (id) => document.getElementById(id);
@@ -196,39 +195,47 @@ function formatAccelerator(accelerator) {
     .join('+');
 }
 
-function renderListenKeysRow() {
-  const row = $('listenKeysRow');
-  if (!row) return;
+/* ---------- Горячие клавиши ---------- */
 
-  const accelerator = (settings.hotkeys && settings.hotkeys.listen) || 'Control+Space';
-  row.innerHTML = '';
+const HOTKEY_DEFAULTS = {
+  toggle: 'Control+Shift+Space',
+  interactive: 'Control+Shift+E',
+  answer: 'Control+Shift+A',
+  regenerate: 'Control+Shift+R',
+  clear: 'Control+Shift+X',
+  historyPrev: 'Control+Shift+Left',
+  historyNext: 'Control+Shift+Right',
+  historyLatest: 'Control+Shift+Down',
+  capture: 'Alt+C',
+  review: 'Alt+R',
+  listen: 'Control+Space',
+  settings: 'Control+Shift+S',
+};
 
-  for (const part of formatAccelerator(accelerator).split('+')) {
-    const kbd = document.createElement('kbd');
-    kbd.textContent = part;
-    row.appendChild(kbd);
-  }
+const HOTKEY_ITEMS = [
+  { key: 'toggle', label: 'показать / скрыть', icon: '✕', title: 'Кнопка ✕ в шапке' },
+  { key: 'interactive', label: 'режим кликов и перетаскивания', icon: '🖱', title: 'Курсор' },
+  { key: 'answer', label: 'ответить сейчас', icon: '⏎', title: 'Ручной ввод' },
+  { key: 'regenerate', label: 'перегенерировать', icon: '↻', title: 'Кнопка ↻ в шапке' },
+  { key: 'clear', label: 'очистить', icon: '⌫', title: 'Кнопка ⌫ в шапке' },
+  { key: 'historyPrev', label: 'прошлый ответ', icon: '‹', title: 'Кнопка ‹ в шапке' },
+  { key: 'historyNext', label: 'следующий ответ', icon: '›', title: 'Кнопка › в шапке' },
+  {
+    key: 'historyLatest',
+    label: 'к актуальному ответу',
+    icon: '»',
+    title: 'Кнопка » в шапке и справа от текста',
+  },
+  { key: 'capture', label: 'решить задачу со скриншота', icon: '📷', title: 'Кнопка 📷 в шапке' },
+  { key: 'review', label: 'код-ревью по скриншоту', icon: '🔍', title: 'Кнопка 🔍 в шапке' },
+  { key: 'listen', label: 'пауза / слушать', icon: '⏸', title: 'Кнопка ⏸ / ▶ в шапке' },
+  { key: 'settings', label: 'настройки', icon: '⚙', title: 'Кнопка ⚙ в шапке' },
+];
 
-  const label = document.createElement('span');
-  label.className = 'key-label';
-  label.textContent = 'пауза / слушать';
-  row.appendChild(label);
+let capturingHotkey = null;
 
-  const icon = document.createElement('span');
-  icon.className = 'key-icon';
-  icon.title = 'Кнопка ⏸ / ▶ в шапке';
-  icon.textContent = '⏸';
-  row.appendChild(icon);
-}
-
-function renderListenHotkey() {
-  const input = $('listenHotkey');
-  if (!input || capturingHotkey) return;
-
-  const accelerator = (settings.hotkeys && settings.hotkeys.listen) || 'Control+Space';
-  input.value = formatAccelerator(accelerator);
-  input.classList.remove('capturing');
-  renderListenKeysRow();
+function hotkeyValue(key) {
+  return (settings.hotkeys && settings.hotkeys[key]) || HOTKEY_DEFAULTS[key] || '';
 }
 
 function keyFromEvent(event) {
@@ -269,117 +276,127 @@ function keyFromEvent(event) {
   return map[code] || '';
 }
 
-function endHotkeyCapture() {
-  capturingHotkey = false;
-  renderListenHotkey();
-  renderHotkeyStatus(lastHotkeyStatus);
-}
+function renderHotkeys() {
+  const list = $('hotkeysList');
+  if (!list) return;
 
-function beginHotkeyCapture() {
-  capturingHotkey = true;
-  const input = $('listenHotkey');
-  input.value = 'Нажмите комбинацию…';
-  input.classList.add('capturing');
-  input.focus();
-  $('listenHotkeyStatus').textContent = '';
-}
+  list.innerHTML = '';
 
-function bindHotkeyField() {
-  const input = $('listenHotkey');
-  const status = $('listenHotkeyStatus');
+  for (const item of HOTKEY_ITEMS) {
+    const row = document.createElement('div');
+    row.className = 'key-row';
+    row.dataset.key = item.key;
 
-  input.addEventListener('click', beginHotkeyCapture);
+    const label = document.createElement('span');
+    label.className = 'key-label';
+    label.textContent = item.label;
 
-  input.addEventListener('keydown', (event) => {
-    if (!capturingHotkey) return;
+    const field = document.createElement('button');
+    field.type = 'button';
+    field.className = 'hotkey-chip';
+    field.dataset.key = item.key;
+    field.textContent =
+      capturingHotkey === item.key
+        ? 'Нажмите комбинацию…'
+        : formatAccelerator(hotkeyValue(item.key));
+    if (capturingHotkey === item.key) field.classList.add('capturing');
 
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (event.key === 'Escape') {
-      endHotkeyCapture();
-      return;
-    }
-
-    if (event.key === 'Backspace' || event.key === 'Delete') {
-      settings.hotkeys = { ...(settings.hotkeys || {}), listen: 'Control+Space' };
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'key-reset';
+    reset.textContent = '↺';
+    reset.title = `Сбросить на ${formatAccelerator(HOTKEY_DEFAULTS[item.key])}`;
+    reset.addEventListener('click', () => {
+      settings.hotkeys = { ...(settings.hotkeys || {}), [item.key]: HOTKEY_DEFAULTS[item.key] };
       endHotkeyCapture();
       scheduleSave();
-      return;
-    }
+    });
 
-    const key = keyFromEvent(event);
-    if (!key) return; // нажали только модификатор
+    const icon = document.createElement('span');
+    icon.className = 'key-icon';
+    icon.textContent = item.icon;
+    icon.title = item.title;
 
-    const hasModifier = event.ctrlKey || event.altKey || event.metaKey;
-    if (!hasModifier && !/^F\d+$/.test(key)) {
-      status.textContent = 'Добавьте Ctrl, Alt или Win — иначе комбинация перехватит обычный ввод.';
-      return;
-    }
+    row.append(label, field, reset, icon);
+    list.appendChild(row);
 
-    const parts = [];
-    if (event.ctrlKey) parts.push('Control');
-    if (event.altKey) parts.push('Alt');
-    if (event.shiftKey) parts.push('Shift');
-    if (event.metaKey) parts.push('Super');
-    parts.push(key);
+    field.addEventListener('click', () => beginHotkeyCapture(item.key, field));
+    field.addEventListener('keydown', (event) => onHotkeyKeydown(event, item.key, field));
+    field.addEventListener('blur', () => {
+      if (capturingHotkey === item.key) endHotkeyCapture();
+    });
+  }
 
-    settings.hotkeys = { ...(settings.hotkeys || {}), listen: parts.join('+') };
-    endHotkeyCapture();
-    scheduleSave();
-  });
-
-  input.addEventListener('blur', () => {
-    if (capturingHotkey) endHotkeyCapture();
-  });
-
-  $('listenHotkeyReset').addEventListener('click', () => {
-    settings.hotkeys = { ...(settings.hotkeys || {}), listen: 'Control+Space' };
-    endHotkeyCapture();
-    scheduleSave();
-  });
+  applyHotkeyStatus();
 }
 
-function renderHotkeyKbds(rowId, accelerator) {
-  const row = $(rowId);
-  if (!row || !accelerator) return;
+function beginHotkeyCapture(key, field) {
+  capturingHotkey = key;
+  field.textContent = 'Нажмите комбинацию…';
+  field.classList.add('capturing');
+  field.focus();
+}
 
-  const label = row.querySelector('.key-label');
-  row.querySelectorAll('kbd').forEach((kbd) => kbd.remove());
+function endHotkeyCapture() {
+  capturingHotkey = null;
+  renderHotkeys();
+}
 
-  for (const part of formatAccelerator(accelerator).split('+')) {
-    const kbd = document.createElement('kbd');
-    kbd.textContent = part;
-    row.insertBefore(kbd, label);
+function onHotkeyKeydown(event, key, field) {
+  if (capturingHotkey !== key) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (event.key === 'Escape') {
+    endHotkeyCapture();
+    return;
   }
+
+  if (event.key === 'Backspace' || event.key === 'Delete') {
+    settings.hotkeys = { ...(settings.hotkeys || {}), [key]: HOTKEY_DEFAULTS[key] };
+    endHotkeyCapture();
+    scheduleSave();
+    return;
+  }
+
+  const part = keyFromEvent(event);
+  if (!part) return;
+
+  const hasModifier = event.ctrlKey || event.altKey || event.metaKey;
+  if (!hasModifier && !/^F\d+$/.test(part)) {
+    field.textContent = 'Нужен Ctrl, Alt или Win';
+    return;
+  }
+
+  const parts = [];
+  if (event.ctrlKey) parts.push('Control');
+  if (event.altKey) parts.push('Alt');
+  if (event.shiftKey) parts.push('Shift');
+  if (event.metaKey) parts.push('Super');
+  parts.push(part);
+
+  settings.hotkeys = { ...(settings.hotkeys || {}), [key]: parts.join('+') };
+  endHotkeyCapture();
+  scheduleSave();
+}
+
+function applyHotkeyStatus() {
+  const failed = (lastHotkeyStatus && lastHotkeyStatus.failed) || [];
+
+  document.querySelectorAll('#hotkeysList .key-row').forEach((row) => {
+    const key = row.dataset.key;
+    const accelerator = hotkeyValue(key);
+    const busy = failed.some((item) => item.accelerator === accelerator);
+
+    row.classList.toggle('busy', busy);
+    row.title = busy ? 'Комбинация занята другой программой' : '';
+  });
 }
 
 function renderHotkeyStatus(status) {
-  const out = $('listenHotkeyStatus');
-  if (!out) return;
-
   lastHotkeyStatus = status || { failed: [] };
-
-  // Скриншот и код-ревью могут переехать на резервную комбинацию,
-  // если основную заняла другая программа — показываем фактическую.
-  renderHotkeyKbds('captureKeysRow', lastHotkeyStatus.capture);
-  renderHotkeyKbds('reviewKeysRow', lastHotkeyStatus.review);
-  const listen = (settings.hotkeys && settings.hotkeys.listen) || 'Control+Space';
-  const failed = lastHotkeyStatus.failed || [];
-  const busy = failed.find((item) => item.accelerator === listen);
-
-  if (busy) {
-    const fallback =
-      listen !== 'Control+Shift+M' ? ' Пока работает резервная Ctrl+Shift+M.' : '';
-    out.textContent = `Не удалось занять ${formatAccelerator(listen)} — система уже использует её.${fallback}`;
-    out.classList.add('warn');
-  } else {
-    out.textContent =
-      listen === 'Control+Space'
-        ? 'Нажмите на поле и введите комбинацию. Ctrl+Space — по умолчанию.'
-        : `Сейчас: ${formatAccelerator(listen)}. Нажмите на поле, чтобы сменить.`;
-    out.classList.remove('warn');
-  }
+  applyHotkeyStatus();
 }
 
 function fill() {
@@ -390,7 +407,7 @@ function fill() {
   renderSttModel();
   renderSttSource();
   fillSimpleFields();
-  renderListenHotkey();
+  renderHotkeys();
 }
 
 function renderSttModel() {
@@ -646,8 +663,6 @@ function bind() {
     }
   });
 
-  bindHotkeyField();
-
   $('trainerBtn').addEventListener('click', () => {
     if (hasApi) window.api.openTrainer();
   });
@@ -713,7 +728,7 @@ async function boot() {
         const editing = active && active.dataset && active.dataset.key;
         settings = next;
         settings.keys = settings.keys || {};
-        if (!capturingHotkey) renderListenHotkey();
+        renderHotkeys();
         if (!editing && !capturingHotkey) fill();
       });
 

@@ -90,9 +90,24 @@ function createHotkeys({ getSettings, actions, onStatus }) {
     );
 
     // Перемотка ответов работает всегда, независимо от положения курсора.
-    bind('Control+Shift+Left', () => actions.history('history-prev'), 'Прошлый ответ', failed);
-    bind('Control+Shift+Right', () => actions.history('history-next'), 'Следующий ответ', failed);
-    bind('Control+Shift+Down', () => actions.history('history-latest'), 'К актуальному ответу', failed);
+    bind(
+      keys.historyPrev || 'Control+Shift+Left',
+      () => actions.history('history-prev'),
+      'Прошлый ответ',
+      failed
+    );
+    bind(
+      keys.historyNext || 'Control+Shift+Right',
+      () => actions.history('history-next'),
+      'Следующий ответ',
+      failed
+    );
+    bind(
+      keys.historyLatest || 'Control+Shift+Down',
+      () => actions.history('history-latest'),
+      'К актуальному ответу',
+      failed
+    );
 
     status = { failed, listen: keys.listen, capture, review };
     if (onStatus) onStatus(status);

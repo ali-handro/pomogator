@@ -293,43 +293,11 @@
             <span>Запускать со скрытым оверлеем</span>
           </label>
 
-          <div class="field hotkey-field">
-            <span class="label">Комбинация «пауза / слушать»</span>
-            <span class="input-row">
-              <input type="text" id="listenHotkey" readonly spellcheck="false" autocomplete="off" />
-              <button type="button" class="ghost" id="listenHotkeyReset" title="Сбросить на Ctrl+Space">↺</button>
-            </span>
-            <span class="hint" id="listenHotkeyStatus"></span>
-          </div>
-
+          <div class="keys" id="hotkeysList"></div>
           <span class="hint">
-            Окно можно перетащить за шапку и растянуть за любой край или угол — размер
-            запоминается. Оверлей всегда скрыт от демонстрации экрана.
+            Нажмите на комбинацию, чтобы изменить. Backspace — сбросить, Esc — отменить.
+            Если комбинацию заняла другая программа, строка подсветится красным.
           </span>
-
-          <span class="hint">Иконки в списке соответствуют кнопкам в шапке оверлея.</span>
-          <span class="hint">
-            Кнопки ‹ и › в шапке, колесо мыши и стрелки ← / → над текстом ответа листают
-            прошлые ответы; кнопка » в шапке, кнопка справа от текста или стрелка ↓
-            возвращают к актуальному. Те же действия доступны глобально по Ctrl+Shift+←,
-            Ctrl+Shift+→ и Ctrl+Shift+↓. Пока вы читаете прошлый ответ, новые ответы
-            копятся в истории и не переключают экран. История хранится до перезапуска.
-          </span>
-
-          <div class="keys">
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd><span class="key-label">показать / скрыть</span><span class="key-icon" title="Кнопка ✕ в шапке">✕</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>E</kbd><span class="key-label">режим кликов и перетаскивания</span><span class="key-icon" title="Курсор">🖱</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>A</kbd><span class="key-label">ответить сейчас</span><span class="key-icon" title="Ручной ввод">⏎</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd><span class="key-label">перегенерировать</span><span class="key-icon" title="Кнопка ↻ в шапке">↻</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>X</kbd><span class="key-label">очистить</span><span class="key-icon" title="Кнопка ⌫ в шапке">⌫</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>←</kbd><span class="key-label">прошлый ответ</span><span class="key-icon" title="Кнопка ‹ в шапке">‹</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>→</kbd><span class="key-label">следующий ответ</span><span class="key-icon" title="Кнопка › в шапке">›</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>↓</kbd><span class="key-label">к актуальному ответу</span><span class="key-icon" title="Кнопка » в шапке и справа от текста">»</span></div>
-            <div id="captureKeysRow"><kbd>Alt</kbd><kbd>C</kbd><span class="key-label">решить задачу со скриншота</span><span class="key-icon" title="Кнопка 📷 в шапке">📷</span></div>
-            <div id="reviewKeysRow"><kbd>Alt</kbd><kbd>R</kbd><span class="key-label">код-ревью по скриншоту</span><span class="key-icon" title="Кнопка 🔍 в шапке">🔍</span></div>
-            <div id="listenKeysRow"><kbd>Ctrl</kbd><kbd>Space</kbd><span class="key-label">пауза / слушать</span><span class="key-icon" title="Кнопка ⏸ / ▶ в шапке">⏸</span></div>
-            <div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd><span class="key-label">настройки</span><span class="key-icon" title="Кнопка ⚙ в шапке">⚙</span></div>
-          </div>
         </section>
       </main>
 

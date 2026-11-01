@@ -108,6 +108,9 @@ const DEFAULT_SETTINGS = {
     settings: 'Control+Shift+S',
     capture: 'Alt+C',
     review: 'Alt+R',
+    historyPrev: 'Control+Shift+Left',
+    historyNext: 'Control+Shift+Right',
+    historyLatest: 'Control+Shift+Down',
   },
 };
 
