@@ -19,8 +19,21 @@ function shuffle(list) {
   return out;
 }
 
+/** Большие банки QA и Java подключаются отдельными файлами. */
+function getCategories() {
+  const base = (window.QUIZ_CATEGORIES || []).filter(
+    (item) => item.id !== 'qa' && item.id !== 'java'
+  );
+
+  const big = [];
+  if (window.QUIZ_QA) big.push({ id: 'qa', label: 'Тестировщик (QA)', questions: window.QUIZ_QA });
+  if (window.QUIZ_JAVA) big.push({ id: 'java', label: 'Java', questions: window.QUIZ_JAVA });
+
+  return [...big, ...base];
+}
+
 function loadCategory(id) {
-  const categories = window.QUIZ_CATEGORIES || [];
+  const categories = getCategories();
   const category = categories.find((item) => item.id === id) || categories[0];
   if (!category) return;
 
@@ -53,11 +66,16 @@ function showQuestion() {
   const options = $('options');
   options.innerHTML = '';
 
-  item.options.forEach((text, index) => {
+  // Перемешиваем варианты, чтобы верный не стоял всегда первым.
+  state.current = shuffle(
+    item.options.map((text, index) => ({ text, correct: index === item.correct }))
+  );
+
+  state.current.forEach((option, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'option';
-    button.textContent = text;
+    button.textContent = option.text;
     button.addEventListener('click', () => choose(index));
     options.appendChild(button);
   });
@@ -78,14 +96,15 @@ function choose(index) {
 
   const item = state.category.questions[state.order[state.index]];
   const buttons = Array.from($('options').children);
+  const correctIndex = state.current.findIndex((option) => option.correct);
 
   buttons.forEach((button, i) => {
     button.disabled = true;
-    if (i === item.correct) button.classList.add('correct');
+    if (i === correctIndex) button.classList.add('correct');
     else if (i === index) button.classList.add('wrong');
   });
 
-  if (index === item.correct) state.correct += 1;
+  if (index === correctIndex) state.correct += 1;
 
   $('score').textContent = `Верно: ${state.correct}`;
 
@@ -119,7 +138,7 @@ function finish() {
 
 function boot() {
   const select = $('category');
-  for (const category of window.QUIZ_CATEGORIES || []) {
+  for (const category of getCategories()) {
     const option = document.createElement('option');
     option.value = category.id;
     option.textContent = category.label;
