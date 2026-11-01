@@ -487,6 +487,129 @@ async function activateLicense() {
   }
 }
 
+/* ---------- аккаунт ---------- */
+
+let accountState = null;
+
+function renderDevices() {
+  const box = $('accountDevices');
+  if (!box) return;
+
+  box.innerHTML = '';
+
+  const profile = accountState && accountState.profile;
+  const devices = (profile && profile.devices) || [];
+  if (!devices.length) return;
+
+  const title = document.createElement('div');
+  title.className = 'devices-title';
+  title.textContent = 'Устройства';
+  box.appendChild(title);
+
+  const currentId = profile.device && profile.device.id;
+
+  for (const device of devices) {
+    const row = document.createElement('div');
+    row.className = 'device-row';
+
+    const name = document.createElement('span');
+    name.textContent = device.name + (device.id === currentId ? ' · это' : '');
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'device-remove';
+    remove.textContent = 'Отвязать';
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        const result = await window.api.accountRemoveDevice(device.id);
+        if (result && result.ok && result.state) {
+          accountState = result.state;
+          renderAccountState();
+        }
+      } catch (err) {
+        console.error('[account] remove device', err);
+      } finally {
+        remove.disabled = false;
+      }
+    });
+
+    row.append(name, remove);
+    box.appendChild(row);
+  }
+}
+
+function renderAccountState() {
+  const guest = $('accountGuest');
+  const user = $('accountUser');
+  if (!guest || !user) return;
+
+  const loggedIn = !!(accountState && accountState.loggedIn);
+
+  guest.hidden = loggedIn;
+  user.hidden = !loggedIn;
+
+  if (!loggedIn) return;
+
+  $('accountEmail').textContent = accountState.email || '';
+
+  const profile = accountState.profile;
+  const wallet = profile && profile.wallet;
+
+  if (wallet) {
+    const balance = Number(wallet.balanceRub || 0);
+    const trial = Number(wallet.trialMinutesLeft || 0);
+
+    $('accountNote').textContent = trial > 0 ? `Пробные минуты: ${trial}` : 'Баланс для облака';
+
+    $('accountUsage').innerHTML =
+      `Баланс: <b>${balance.toFixed(2)} ₽</b>` +
+      (trial > 0 ? ` · пробных минут: <b>${trial}</b>` : '');
+  } else {
+    $('accountNote').textContent = 'Профиль не загружен';
+    $('accountUsage').textContent = '';
+  }
+
+  renderDevices();
+}
+
+async function renderAccount() {
+  if (!hasApi || !window.api.accountStatus) return;
+
+  try {
+    accountState = await window.api.accountStatus();
+  } catch {
+    accountState = null;
+  }
+
+  renderAccountState();
+
+  if (accountState && accountState.loggedIn) {
+    try {
+      const result = await window.api.accountRefresh();
+      if (result && result.state) {
+        accountState = result.state;
+        renderAccountState();
+      }
+    } catch {
+      /* сервер недоступен — показываем то, что есть */
+    }
+  }
+}
+
+async function logoutAccount() {
+  if (!hasApi || !window.api.accountLogout) return;
+
+  try {
+    const result = await window.api.accountLogout();
+    if (result && result.state) accountState = result.state;
+  } catch (err) {
+    console.error('[account] logout', err);
+  }
+
+  renderAccountState();
+}
+
 function fill() {
   renderProviders();
   renderModels();
@@ -497,6 +620,7 @@ function fill() {
   fillSimpleFields();
   renderHotkeys();
   renderPlan();
+  renderAccount();
 }
 
 function renderSttModel() {
@@ -767,6 +891,16 @@ function bind() {
   const licenseActivateBtn = $('licenseActivate');
   if (licenseActivateBtn) licenseActivateBtn.addEventListener('click', activateLicense);
 
+  const accountLoginBtn = $('accountLogin');
+  if (accountLoginBtn) {
+    accountLoginBtn.addEventListener('click', () => {
+      if (hasApi) window.api.openLogin();
+    });
+  }
+
+  const accountLogoutBtn = $('accountLogout');
+  if (accountLogoutBtn) accountLogoutBtn.addEventListener('click', logoutAccount);
+
   const licenseKeyInput = $('licenseKey');
   if (licenseKeyInput) {
     licenseKeyInput.addEventListener('keydown', (event) => {
@@ -829,6 +963,12 @@ async function boot() {
         settings.keys = settings.keys || {};
         renderHotkeys();
         if (!editing && !capturingHotkey) fill();
+      });
+
+      window.api.onAccountChanged((state) => {
+        accountState = state;
+        renderAccountState();
+        if (state && state.loggedIn && !state.profile) renderAccount();
       });
 
       window.api.onHotkeysStatus((status) => renderHotkeyStatus(status));

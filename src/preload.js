@@ -18,6 +18,16 @@ contextBridge.exposeInMainWorld('api', {
   licenseStatus: () => ipcRenderer.invoke('license:status'),
   licenseActivate: (key) => ipcRenderer.invoke('license:activate', key),
 
+  /* аккаунт */
+  accountStatus: () => ipcRenderer.invoke('account:status'),
+  accountRequestCode: (email) => ipcRenderer.invoke('account:request-code', email),
+  accountVerify: (email, code) => ipcRenderer.invoke('account:verify', { email, code }),
+  accountRefresh: () => ipcRenderer.invoke('account:refresh'),
+  accountLogout: () => ipcRenderer.invoke('account:logout'),
+  accountRemoveDevice: (id) => ipcRenderer.invoke('account:remove-device', id),
+  onAccountChanged: (cb) => subscribe('account:changed', cb),
+  openLogin: () => ipcRenderer.send('account:open-login'),
+
   /* окно */
   setClickThrough: (value) => ipcRenderer.send('overlay:set-click-through', value),
   onClickThrough: (cb) => subscribe('overlay:click-through', cb),

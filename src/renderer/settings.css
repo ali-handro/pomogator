@@ -191,6 +191,82 @@ h1 {
   color: #f0a35e;
 }
 
+/* ---------- аккаунт ---------- */
+
+.account-lead {
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+#accountGuest .test-btn {
+  margin-top: 12px;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.devices {
+  margin-top: 14px;
+}
+
+.devices-title {
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.device-row:last-child {
+  border-bottom: 0;
+}
+
+.device-remove {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--stroke);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.device-remove:hover {
+  color: #ffb4b4;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.offline-key {
+  margin-top: 16px;
+}
+
+.offline-key summary {
+  font-size: 11.5px;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.offline-key[open] summary {
+  margin-bottom: 10px;
+}
+
 h2 {
   margin-bottom: 2px;
   font-size: 10.5px;

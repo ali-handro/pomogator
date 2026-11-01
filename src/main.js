@@ -26,6 +26,7 @@ const { createHotkeys } = require('./hotkeys');
 const { createScreenshotService } = require('./screenshot');
 const { createMeetingStore } = require('./meeting-store');
 const license = require('./license');
+const { createAccount } = require('./account');
 const { buildMessages } = require('./prompt');
 
 const APP_ROOT = path.join(__dirname, '..');
@@ -36,10 +37,12 @@ let settingsWin = null;
 let trainerWin = null;
 let meetingWin = null;
 let quizWin = null;
+let loginWin = null;
 let tray = null;
 let isQuitting = false;
 let activeAbort = null;
 let sttAbort = null;
+let account = null;
 
 /** Коды, при которых имеет смысл повторить запрос (лимит или временный сбой). */
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
@@ -586,6 +589,54 @@ function createSettings() {
   });
 
   settingsWin.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
+/**
+ * Окно входа: почта → код из письма → токен сессии.
+ */
+function createLogin() {
+  if (loginWin && !loginWin.isDestroyed()) {
+    loginWin.show();
+    loginWin.focus();
+    return;
+  }
+
+  loginWin = new BrowserWindow({
+    width: 430,
+    height: 560,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: false,
+    title: 'Помогатор — вход',
+    backgroundColor: '#0b0f16',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  loginWin.loadFile(path.join(__dirname, 'renderer', 'login.html'));
+
+  loginWin.once('ready-to-show', () => {
+    if (!loginWin || loginWin.isDestroyed()) return;
+    loginWin.show();
+    loginWin.focus();
+  });
+
+  loginWin.on('closed', () => {
+    loginWin = null;
+  });
+
+  loginWin.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -1225,6 +1276,53 @@ function registerIpc() {
     return { ok: true, state: license.describe(settings) };
   });
 
+  /* ---------- аккаунт ---------- */
+
+  ipcMain.handle('account:status', () => account.status());
+
+  ipcMain.handle('account:request-code', async (_event, email) => {
+    try {
+      return { ok: true, ...(await account.requestCode(email)) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('account:verify', async (_event, payload) => {
+    try {
+      const state = await account.verify(payload && payload.email, payload && payload.code);
+      return { ok: true, state };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('account:refresh', async () => {
+    try {
+      return { ok: true, state: await account.refresh() };
+    } catch (err) {
+      return { ok: false, error: err.message, state: account.status() };
+    }
+  });
+
+  ipcMain.handle('account:logout', async () => {
+    try {
+      return { ok: true, state: await account.logout() };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('account:remove-device', async (_event, id) => {
+    try {
+      return { ok: true, state: await account.removeDevice(id) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.on('account:open-login', createLogin);
+
   ipcMain.handle('settings:save', (_event, patch) => {
     const prevHotkeys = JSON.stringify(settings.hotkeys);
     const prevDisplay = Number(settings.overlayDisplay) || 0;
@@ -1711,6 +1809,16 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.pomogator.app');
     migrateLegacyData();
     loadSettings();
+
+    account = createAccount({
+      getSettings: () => settings,
+      onChanged: (state) => {
+        if (settingsWin && !settingsWin.isDestroyed()) {
+          settingsWin.webContents.send('account:changed', state);
+        }
+      },
+    });
+    account.load();
 
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(

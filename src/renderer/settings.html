@@ -35,29 +35,57 @@
 
       <main class="content">
         <section class="card plan-card">
-          <h2>Тариф</h2>
+          <h2>Аккаунт и баланс</h2>
 
-          <div class="plan-head">
-            <div class="plan-title">
-              <span class="plan-name" id="planName">Бесплатно</span>
-              <span class="plan-note" id="planNote"></span>
+          <div id="accountGuest">
+            <p class="account-lead">
+              Войдите, чтобы пользоваться облаком Помогатора — без ключей и настройки.
+              Локальный режим работает и без входа.
+            </p>
+            <button type="button" class="ghost test-btn" id="accountLogin">Войти</button>
+          </div>
+
+          <div id="accountUser" hidden>
+            <div class="plan-head">
+              <div class="plan-title">
+                <span class="plan-name paid" id="accountEmail"></span>
+                <span class="plan-note" id="accountNote"></span>
+              </div>
+              <div class="account-actions">
+                <button type="button" class="ghost test-btn" id="accountTopup" hidden>Пополнить</button>
+                <button type="button" class="ghost test-btn" id="accountLogout">Выйти</button>
+              </div>
             </div>
-            <button type="button" class="ghost test-btn" id="planBuy" hidden>Купить</button>
+
+            <div class="plan-usage" id="accountUsage"></div>
+            <div class="devices" id="accountDevices"></div>
           </div>
 
-          <div class="plan-usage" id="planUsage"></div>
+          <details class="offline-key" id="offlineKey">
+            <summary>Офлайн-ключ для корпоративных</summary>
 
-          <div class="plan-activate">
-            <input
-              type="text"
-              id="licenseKey"
-              placeholder="Ключ активации"
-              spellcheck="false"
-              autocomplete="off"
-            />
-            <button type="button" class="ghost test-btn" id="licenseActivate">Активировать</button>
-          </div>
-          <span class="hint" id="licenseStatus"></span>
+            <div class="plan-head">
+              <div class="plan-title">
+                <span class="plan-name" id="planName">Бесплатно</span>
+                <span class="plan-note" id="planNote"></span>
+              </div>
+              <button type="button" class="ghost test-btn" id="planBuy" hidden>Купить</button>
+            </div>
+
+            <div class="plan-usage" id="planUsage"></div>
+
+            <div class="plan-activate">
+              <input
+                type="text"
+                id="licenseKey"
+                placeholder="Ключ активации"
+                spellcheck="false"
+                autocomplete="off"
+              />
+              <button type="button" class="ghost test-btn" id="licenseActivate">Активировать</button>
+            </div>
+            <span class="hint" id="licenseStatus"></span>
+          </details>
         </section>
 
         <section class="card">
