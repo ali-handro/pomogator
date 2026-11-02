@@ -46,7 +46,7 @@ async function sendCode() {
     $('stepCode').hidden = false;
     $('code').value = '';
     $('code').focus();
-    setStatus('Код отправлен. Проверьте почту.', 'ok');
+    setStatus(result.message || 'Код отправлен. Проверьте почту.', 'ok');
   } catch (err) {
     setStatus(err.message, 'err');
   } finally {

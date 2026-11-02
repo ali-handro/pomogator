@@ -12,6 +12,14 @@ const TRIAL_SECONDS = Number(process.env.TRIAL_SECONDS) || 1200;
 const CODE_TTL_MS = 10 * 60 * 1000;
 const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-me';
 
+/**
+ * Только для локального теста: если задан TEST_LOGIN_CODE (6 цифр),
+ * вход всегда принимает этот код и он не истекает. В бою переменная пустая.
+ */
+const TEST_LOGIN_CODE = /^\d{6}$/.test(String(process.env.TEST_LOGIN_CODE || '').trim())
+  ? String(process.env.TEST_LOGIN_CODE).trim()
+  : '';
+
 const emailHits = new Map();
 const ipHits = new Map();
 
@@ -52,15 +60,17 @@ async function requestCode(rawEmail, ip) {
   const email = normEmail(rawEmail);
   if (!isEmail(email)) throw new HttpError(400, 'Введите корректный email');
 
-  if (!hit(emailHits, email, 60 * 1000, 1)) {
-    throw new HttpError(429, 'Код уже отправлен. Подождите минуту.');
+  if (!TEST_LOGIN_CODE) {
+    if (!hit(emailHits, email, 60 * 1000, 1)) {
+      throw new HttpError(429, 'Код уже отправлен. Подождите минуту.');
+    }
+
+    if (!hit(ipHits, ip || 'unknown', 60 * 60 * 1000, 10)) {
+      throw new HttpError(429, 'Слишком много запросов. Попробуйте позже.');
+    }
   }
 
-  if (!hit(ipHits, ip || 'unknown', 60 * 60 * 1000, 10)) {
-    throw new HttpError(429, 'Слишком много запросов. Попробуйте позже.');
-  }
-
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const code = TEST_LOGIN_CODE || String(Math.floor(100000 + Math.random() * 900000));
   const expiresAt = now() + CODE_TTL_MS;
 
   db.prepare(
@@ -74,6 +84,15 @@ async function requestCode(rawEmail, ip) {
   ).run(email, codeHash(code), expiresAt, now());
 
   await mail.sendCode(email, code);
+
+  if (TEST_LOGIN_CODE) {
+    return {
+      ok: true,
+      message: `Тестовый режим: код ${TEST_LOGIN_CODE}`,
+      testCode: TEST_LOGIN_CODE,
+      ttlSeconds: 0,
+    };
+  }
 
   return { ok: true, message: 'Код отправлен на почту', ttlSeconds: CODE_TTL_MS / 1000 };
 }
@@ -122,16 +141,21 @@ function verifyCode(rawEmail, rawCode, info = {}) {
   if (!isEmail(email)) throw new HttpError(400, 'Введите корректный email');
   if (!/^\d{6}$/.test(code)) throw new HttpError(400, 'Код — 6 цифр');
 
-  const row = db.prepare('SELECT * FROM auth_codes WHERE email = ?').get(email);
-  if (!row) throw new HttpError(400, 'Код не найден. Запросите новый.');
-  if (row.expires_at < now()) throw new HttpError(400, 'Код истёк. Запросите новый.');
-  if (row.attempts >= 5) {
-    throw new HttpError(429, 'Слишком много попыток. Запросите новый код.');
-  }
+  // Тестовый код не истекает и не требует запроса письма.
+  const isTestCode = !!TEST_LOGIN_CODE && code === TEST_LOGIN_CODE;
 
-  if (codeHash(code) !== row.code_hash) {
-    db.prepare('UPDATE auth_codes SET attempts = attempts + 1 WHERE email = ?').run(email);
-    throw new HttpError(400, 'Неверный код');
+  if (!isTestCode) {
+    const row = db.prepare('SELECT * FROM auth_codes WHERE email = ?').get(email);
+    if (!row) throw new HttpError(400, 'Код не найден. Запросите новый.');
+    if (row.expires_at < now()) throw new HttpError(400, 'Код истёк. Запросите новый.');
+    if (row.attempts >= 5) {
+      throw new HttpError(429, 'Слишком много попыток. Запросите новый код.');
+    }
+
+    if (codeHash(code) !== row.code_hash) {
+      db.prepare('UPDATE auth_codes SET attempts = attempts + 1 WHERE email = ?').run(email);
+      throw new HttpError(400, 'Неверный код');
+    }
   }
 
   db.prepare('DELETE FROM auth_codes WHERE email = ?').run(email);

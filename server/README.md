@@ -12,12 +12,15 @@ copy .env.example .env
 $env:AUTH_SECRET="локальный-секрет"
 $env:ADMIN_TOKEN="локальный-админ"
 $env:MAIL_MODE="console"
+$env:TEST_LOGIN_CODE="123456"
 npm start
 ```
 
 Сервер поднимется на `http://127.0.0.1:8787`, админка — `/admin`.
 
 В режиме `MAIL_MODE=console` код входа печатается в консоль сервера.
+Если задан `TEST_LOGIN_CODE`, вход всегда принимает этот код и он не истекает —
+удобно для тестов. В бою переменную нужно оставить пустой.
 
 ## Проверка через PowerShell
 
