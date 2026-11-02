@@ -64,6 +64,7 @@ function listUsers(query) {
       balanceKopecks: row.balance_kopecks || 0,
       balanceRub: rub(row.balance_kopecks || 0),
       trialMinutesLeft: Math.ceil((row.trial_seconds_left || 0) / 60),
+      trialMinutesTotal: Math.ceil((Number(process.env.TRIAL_SECONDS) || 1200) / 60),
     })),
   };
 }

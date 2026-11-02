@@ -499,12 +499,15 @@ function renderAccountState() {
   if (wallet) {
     const balance = Number(wallet.balanceRub || 0);
     const trial = Number(wallet.trialMinutesLeft || 0);
+    const trialTotal = Number(wallet.trialMinutesTotal || 0) || 20;
 
-    $('accountNote').textContent = trial > 0 ? `Пробные минуты: ${trial}` : 'Баланс для облака';
+    $('accountNote').textContent =
+      trial > 0
+        ? `Пробные минуты: ${trial} из ${trialTotal}`
+        : `Пробные минуты израсходованы (${trialTotal} мин)`;
 
     $('accountUsage').innerHTML =
-      `Баланс: <b>${balance.toFixed(2)} ₽</b>` +
-      (trial > 0 ? ` · пробных минут: <b>${trial}</b>` : '');
+      `Баланс: <b>${balance.toFixed(2)} ₽</b> · пробные: <b>${trial}</b> из ${trialTotal} мин`;
   } else {
     $('accountNote').textContent = 'Профиль не загружен';
     $('accountUsage').textContent = '';

@@ -257,6 +257,7 @@ function profile(user, device) {
       balanceRub: rub(wallet.balance_kopecks),
       trialSecondsLeft: wallet.trial_seconds_left,
       trialMinutesLeft: Math.ceil(wallet.trial_seconds_left / 60),
+      trialMinutesTotal: Math.ceil((Number(process.env.TRIAL_SECONDS) || 1200) / 60),
     },
     device: device ? publicDevice(device) : null,
     devices: devices.map(publicDevice),

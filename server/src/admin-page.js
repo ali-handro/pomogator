@@ -134,7 +134,7 @@ const ADMIN_HTML = `<!doctype html>
 
         const trial = document.createElement('td');
         trial.className = 'num';
-        trial.textContent = user.trialMinutesLeft + ' мин';
+        trial.textContent = user.trialMinutesLeft + ' / ' + user.trialMinutesTotal + ' мин';
 
         const status = document.createElement('td');
         status.className = 'status ' + user.status;
