@@ -287,6 +287,7 @@ function renderHotkeys() {
     const row = document.createElement('div');
     row.className = 'key-row';
     row.dataset.key = item.key;
+    row.dataset.label = item.label;
 
     const label = document.createElement('span');
     label.className = 'key-label';
@@ -382,6 +383,20 @@ function onHotkeyKeydown(event, key, field) {
   scheduleSave();
 }
 
+function activeFallback(key) {
+  const status = lastHotkeyStatus || {};
+
+  if (key === 'review' && status.review && status.review !== hotkeyValue('review')) {
+    return status.review;
+  }
+
+  if (key === 'capture' && status.capture && status.capture !== hotkeyValue('capture')) {
+    return status.capture;
+  }
+
+  return '';
+}
+
 function applyHotkeyStatus() {
   const failed = (lastHotkeyStatus && lastHotkeyStatus.failed) || [];
 
@@ -389,9 +404,21 @@ function applyHotkeyStatus() {
     const key = row.dataset.key;
     const accelerator = hotkeyValue(key);
     const busy = failed.some((item) => item.accelerator === accelerator);
+    const fallback = busy ? activeFallback(key) : '';
 
     row.classList.toggle('busy', busy);
-    row.title = busy ? 'Комбинация занята другой программой' : '';
+
+    const label = row.querySelector('.key-label');
+    if (label) {
+      const base = row.dataset.label || label.textContent;
+      label.textContent = fallback ? `${base} → ${formatAccelerator(fallback)}` : base;
+    }
+
+    row.title = busy
+      ? fallback
+        ? `Комбинация занята. Работает резервная: ${formatAccelerator(fallback)}`
+        : 'Комбинация занята другой программой. Назначьте другую.'
+      : '';
   });
 }
 

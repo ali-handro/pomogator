@@ -43,6 +43,10 @@ const ADMIN_HTML = `<!doctype html>
     <input id="search" type="search" placeholder="Поиск по email" style="min-width:220px" />
     <button id="reload">Обновить</button>
   </div>
+  <p class="muted" style="margin:-6px 0 14px">
+    Токен задаётся в <code>server/.env</code> (ADMIN_TOKEN). Для локального теста —
+    <b>test-admin</b>.
+  </p>
 
   <div class="stats" id="stats"></div>
   <div id="msg"></div>
@@ -85,7 +89,12 @@ const ADMIN_HTML = `<!doctype html>
       },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Неверный или пустой токен. Введите ADMIN_TOKEN и нажмите «Применить».');
+      }
+      throw new Error(data.error || ('HTTP ' + response.status));
+    }
     return data;
   }
 
