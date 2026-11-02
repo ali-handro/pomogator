@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
   accountRefresh: () => ipcRenderer.invoke('account:refresh'),
   accountLogout: () => ipcRenderer.invoke('account:logout'),
   accountRemoveDevice: (id) => ipcRenderer.invoke('account:remove-device', id),
+  accountQuote: (kind) => ipcRenderer.invoke('account:quote', kind),
   onAccountChanged: (cb) => subscribe('account:changed', cb),
   openLogin: () => ipcRenderer.send('account:open-login'),
 

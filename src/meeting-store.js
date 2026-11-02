@@ -42,7 +42,7 @@ function safeFile(name) {
   return base.endsWith('.json') ? base : `${base}.json`;
 }
 
-function createMeetingStore({ getSettings, streamChat, providerConfig }) {
+function createMeetingStore({ getSettings, streamChat, providerConfig, cloudChat }) {
   function save(payload) {
     try {
       const dir = meetingsDir();
@@ -85,6 +85,15 @@ function createMeetingStore({ getSettings, streamChat, providerConfig }) {
       .join('\n');
 
     const ask = async (messages, maxTokens, signal) => {
+      if (cloudChat) {
+        try {
+          const text = await cloudChat(messages, maxTokens);
+          if (text != null) return String(text).trim();
+        } catch (err) {
+          console.warn('[meeting] облачная выжимка не удалась:', err.message);
+        }
+      }
+
       let out = '';
       await streamChat({
         providerId,

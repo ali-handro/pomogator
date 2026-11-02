@@ -30,7 +30,14 @@ const VISION_MODES = {
   },
 };
 
-function createScreenshotService({ getSettings, sendToOverlay, streamChat, providerConfig, visionModel }) {
+function createScreenshotService({
+  getSettings,
+  sendToOverlay,
+  streamChat,
+  providerConfig,
+  visionModel,
+  cloudChat,
+}) {
   let captureWin = null;
   let captureShot = null;
   let captureScale = 1;
@@ -146,6 +153,30 @@ function createScreenshotService({ getSettings, sendToOverlay, streamChat, provi
     const model = visionModel(providerId, settings.model);
     const variant = VISION_MODES[mode] || VISION_MODES.solve;
 
+    const messages = [
+      { role: 'system', content: variant.prompt },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: variant.ask },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+        ],
+      },
+    ];
+
+    // Облако Помогатора: скриншот уходит на наш сервер, ключи не нужны.
+    if (cloudChat) {
+      try {
+        const text = await cloudChat(messages, 900);
+        if (text != null) {
+          if (text) sendToOverlay('llm:delta', text);
+          return;
+        }
+      } catch (err) {
+        console.warn('[vision] облако не ответило:', err.message);
+      }
+    }
+
     if (!provider.noKey && !apiKey) throw new Error('Нет ключа для модели');
     if (provider.needsAccount && !settings.cloudflareAccount) {
       throw new Error('Не указан Account ID Cloudflare');
@@ -156,16 +187,7 @@ function createScreenshotService({ getSettings, sendToOverlay, streamChat, provi
       apiKey,
       accountId: settings.cloudflareAccount || '',
       model,
-      messages: [
-        { role: 'system', content: variant.prompt },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: variant.ask },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
-          ],
-        },
-      ],
+      messages,
       maxTokens: 900,
       temperature: 0.2,
       signal: controller.signal,

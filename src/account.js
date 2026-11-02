@@ -136,7 +136,7 @@ function createAccount({ getSettings, onChanged }) {
         method: options.method || 'GET',
         headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(options.timeoutMs || REQUEST_TIMEOUT_MS),
       });
     } catch {
       throw new Error('Нет связи с сервером. Проверьте интернет.');
@@ -216,6 +216,42 @@ function createAccount({ getSettings, onChanged }) {
     return status();
   }
 
+  /* ---------- облако ---------- */
+
+  function normalizeKind(kind) {
+    return kind === 'meeting' ? 'meeting' : 'interview';
+  }
+
+  async function transcribe(wav, kind, language) {
+    const audio = Buffer.from(wav).toString('base64');
+
+    return request('/ai/transcribe', {
+      method: 'POST',
+      timeoutMs: 45000,
+      body: {
+        kind: normalizeKind(kind),
+        audio,
+        language: language || 'ru',
+      },
+    });
+  }
+
+  async function chat(messages, kind, maxTokens) {
+    return request('/ai/chat', {
+      method: 'POST',
+      timeoutMs: 60000,
+      body: {
+        kind: normalizeKind(kind),
+        messages,
+        maxTokens: maxTokens || 400,
+      },
+    });
+  }
+
+  async function quote(kind) {
+    return request(`/ai/quote?kind=${normalizeKind(kind)}`, { timeoutMs: 15000 });
+  }
+
   return {
     load,
     status,
@@ -224,6 +260,9 @@ function createAccount({ getSettings, onChanged }) {
     refresh,
     logout,
     removeDevice,
+    transcribe,
+    chat,
+    quote,
     deviceName,
   };
 }

@@ -3,9 +3,10 @@
 const http = require('http');
 
 const { db } = require('./db');
-const { HttpError, sendJson, readJson, clientIp } = require('./util');
+const { HttpError, sendJson, readJson, clientIp, rub } = require('./util');
 const auth = require('./auth');
 const wallet = require('./wallet');
+const ai = require('./ai');
 const admin = require('./admin');
 const { ADMIN_HTML } = require('./admin-page');
 
@@ -88,6 +89,71 @@ route(
   { auth: true }
 );
 
+/* ---------- облако: распознавание и ответы ---------- */
+
+route(
+  'GET',
+  '/ai/quote',
+  async ({ user, query }) => {
+    const kind = query.get('kind') === 'meeting' ? 'meeting' : 'interview';
+    const current = wallet.ensure(user.id);
+
+    return {
+      ok: true,
+      kind,
+      ratePerHourRub: wallet.ratePerHour(kind) / 100,
+      remainingSeconds: wallet.remainingSeconds(user.id, kind),
+      balanceRub: rub(current.balance_kopecks),
+      trialSecondsLeft: current.trial_seconds_left,
+    };
+  },
+  { auth: true }
+);
+
+route(
+  'POST',
+  '/ai/transcribe',
+  async ({ user, device, body }) => {
+    const kind = body.kind === 'meeting' ? 'meeting' : 'interview';
+    const audio = Buffer.from(String(body.audio || ''), 'base64');
+
+    if (!audio.length) throw new HttpError(400, 'Пустое аудио');
+
+    const seconds = ai.wavSeconds(audio);
+    if (!seconds) throw new HttpError(400, 'Некорректный WAV');
+
+    if (wallet.remainingSeconds(user.id, kind) <= 0) {
+      throw new HttpError(402, 'Недостаточно средств. Пополните баланс.');
+    }
+
+    const text = await ai.transcribe(audio, { language: body.language || 'ru' });
+    const charge = wallet.chargeSeconds(user.id, kind, seconds, device && device.id);
+
+    return {
+      ok: true,
+      text,
+      seconds: charge.charged,
+      costKopecks: charge.costKopecks,
+      balanceKopecks: charge.balanceKopecks,
+      trialSecondsLeft: charge.trialSecondsLeft,
+    };
+  },
+  { auth: true, bodyLimit: 4 * 1024 * 1024 }
+);
+
+route(
+  'POST',
+  '/ai/chat',
+  async ({ body }) => {
+    const messages = ai.cleanMessages(body.messages);
+    if (!messages.length) throw new HttpError(400, 'Пустой запрос');
+
+    const text = await ai.chat(messages, { maxTokens: body.maxTokens });
+    return { ok: true, text };
+  },
+  { auth: true }
+);
+
 /* ---------- админка ---------- */
 
 route('GET', '/admin/api/users', async ({ query }) => admin.listUsers(query.get('q')), {
@@ -134,7 +200,7 @@ const server = http.createServer(async (req, res) => {
       });
 
       if (req.method !== 'GET' && req.method !== 'DELETE') {
-        ctx.body = await readJson(req);
+        ctx.body = await readJson(req, item.options.bodyLimit || 64 * 1024);
       }
 
       if (item.options.auth) {

@@ -37,6 +37,7 @@ let settings = {
   sttProvider: 'cloudflare',
   sttModel: '@cf/deepgram/nova-3',
   localSttModel: 'base',
+  cloudMode: false,
 };
 
 let providers = FALLBACK_PROVIDERS;
@@ -571,6 +572,39 @@ function renderAccountState() {
   }
 
   renderDevices();
+
+  const cloudBox = $('cloudMode');
+  if (cloudBox) cloudBox.checked = !!settings.cloudMode;
+
+  const connectionCard = $('connectionCard');
+  if (connectionCard) connectionCard.hidden = loggedIn && !!settings.cloudMode;
+
+  refreshCloudQuote();
+}
+
+async function refreshCloudQuote() {
+  const hint = $('cloudHint');
+  if (!hint || !hasApi || !window.api.accountQuote) return;
+
+  try {
+    const [interview, meeting] = await Promise.all([
+      window.api.accountQuote('interview'),
+      window.api.accountQuote('meeting'),
+    ]);
+
+    const parts = [];
+
+    if (interview && interview.ok) {
+      parts.push(`собеседование ${Math.floor(interview.remainingSeconds / 60)} мин`);
+    }
+    if (meeting && meeting.ok) {
+      parts.push(`встречи ${Math.floor(meeting.remainingSeconds / 60)} мин`);
+    }
+
+    hint.textContent = parts.length ? `Осталось: ${parts.join(' · ')}` : '';
+  } catch {
+    hint.textContent = '';
+  }
 }
 
 async function renderAccount() {
@@ -900,6 +934,23 @@ function bind() {
 
   const accountLogoutBtn = $('accountLogout');
   if (accountLogoutBtn) accountLogoutBtn.addEventListener('click', logoutAccount);
+
+  const cloudModeBox = $('cloudMode');
+  if (cloudModeBox) {
+    cloudModeBox.addEventListener('change', async () => {
+      settings.cloudMode = cloudModeBox.checked;
+
+      if (hasApi) {
+        try {
+          await window.api.saveSettings({ cloudMode: settings.cloudMode });
+        } catch (err) {
+          console.error('[settings] cloud mode', err);
+        }
+      }
+
+      refreshCloudQuote();
+    });
+  }
 
   const licenseKeyInput = $('licenseKey');
   if (licenseKeyInput) {

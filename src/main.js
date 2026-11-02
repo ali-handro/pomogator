@@ -107,6 +107,7 @@ const DEFAULT_SETTINGS = {
   trialStartedAt: 0,
   usage: null,
   purchaseUrl: '',
+  cloudMode: false,
   hotkeys: {
     toggle: 'Control+Shift+Space',
     interactive: 'Control+Shift+E',
@@ -242,12 +243,22 @@ const screenshots = createScreenshotService({
   streamChat,
   providerConfig,
   visionModel,
+  cloudChat: async (messages, maxTokens) => {
+    if (!settings.cloudMode || !account || !account.status().loggedIn) return null;
+    const result = await account.chat(messages, 'interview', maxTokens);
+    return result && result.ok ? result.text : null;
+  },
 });
 
 const meetings = createMeetingStore({
   getSettings: () => settings,
   streamChat,
   providerConfig,
+  cloudChat: async (messages, maxTokens) => {
+    if (!settings.cloudMode || !account || !account.status().loggedIn) return null;
+    const result = await account.chat(messages, 'meeting', maxTokens);
+    return result && result.ok ? result.text : null;
+  },
 });
 
 /* ------------------------------------------------------------------ */
@@ -1321,6 +1332,14 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle('account:quote', async (_event, kind) => {
+    try {
+      return { ok: true, ...(await account.quote(kind)) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   ipcMain.on('account:open-login', createLogin);
 
   ipcMain.handle('settings:save', (_event, patch) => {
@@ -1448,6 +1467,37 @@ function registerIpc() {
     const question = String((payload && payload.question) || '').trim();
     if (!question) return { ok: false, error: 'Пустой вопрос' };
 
+    // Облако Помогатора: ответ идёт через наш сервер, ключи не нужны.
+    if (settings.cloudMode && account && account.status().loggedIn) {
+      if (activeAbort) activeAbort.abort();
+      const controller = new AbortController();
+      activeAbort = controller;
+
+      sendToOverlay('llm:start');
+
+      try {
+        const result = await account.chat(
+          buildMessages({ question, settings }),
+          'interview',
+          400
+        );
+
+        if (!result || !result.ok) {
+          throw new Error((result && result.error) || 'Облако не ответило');
+        }
+
+        if (result.text) sendToOverlay('llm:delta', result.text);
+        sendToOverlay('llm:done');
+        return { ok: true, cloud: true };
+      } catch (err) {
+        if (err.name === 'AbortError') return { ok: false, aborted: true };
+        sendToOverlay('llm:error', err.message);
+        return { ok: false, error: err.message };
+      } finally {
+        if (activeAbort === controller) activeAbort = null;
+      }
+    }
+
     const providerId = settings.provider || 'cloudflare';
     const provider = providerConfig(providerId);
     const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
@@ -1571,6 +1621,24 @@ function registerIpc() {
       try {
         const text = await localStt.transcribe(audio, override.model);
         return { ok: true, text, model: 'local' };
+      } catch (err) {
+        if (err.name === 'AbortError') return { ok: false, aborted: true };
+        return { ok: false, error: err.message };
+      }
+    }
+
+    // Облако Помогатора: распознавание идёт через наш сервер и списывает минуты.
+    if (settings.cloudMode && account && account.status().loggedIn) {
+      const kind = override && override.kind === 'meeting' ? 'meeting' : 'interview';
+
+      try {
+        const result = await account.transcribe(audio, kind, settings.language);
+
+        if (result && result.ok) {
+          return { ok: true, text: result.text, model: 'cloud' };
+        }
+
+        return { ok: false, error: (result && result.error) || 'Облако не ответило' };
       } catch (err) {
         if (err.name === 'AbortError') return { ok: false, aborted: true };
         return { ok: false, error: err.message };

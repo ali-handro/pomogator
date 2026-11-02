@@ -156,8 +156,8 @@ function flush(channel) {
 }
 
 function engineOverride() {
-  if ($('engine').value === 'local') return { provider: 'local', model: 'base' };
-  return { model: '@cf/openai/whisper-large-v3-turbo' };
+  if ($('engine').value === 'local') return { provider: 'local', model: 'base', kind: 'meeting' };
+  return { model: '@cf/openai/whisper-large-v3-turbo', kind: 'meeting' };
 }
 
 async function drain(channel) {
