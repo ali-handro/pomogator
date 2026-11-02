@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Проверка синтаксиса API
+        run: |
+          for file in server/src/*.js; do
+            echo "check $file"
+            node --check "$file"
+          done
+
+      - name: Проверка синтаксиса приложения
+        run: |
+          for file in src/*.js src/renderer/*.js; do
+            echo "check $file"
+            node --check "$file"
+          done
+
+      - name: Секреты не попали в репозиторий
+        run: |
+          test ! -f server/.env
+          test ! -d server/data
+          ! git ls-files | grep -E '(^|/)(\.env|settings\.json|account\.json)$'
