@@ -14,6 +14,7 @@ const {
   desktopCapturer,
   net,
   clipboard,
+  safeStorage,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -124,15 +125,45 @@ function settingsFile() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
+/** Ключи провайдеров шифруем через DPAPI, как токен аккаунта. */
+function encryptSecrets(data) {
+  const text = JSON.stringify(data);
+
+  if (safeStorage.isEncryptionAvailable()) {
+    return { enc: true, value: safeStorage.encryptString(text).toString('base64') };
+  }
+
+  console.warn('[settings] safeStorage недоступен — ключи хранятся в base64');
+  return { enc: false, value: Buffer.from(text, 'utf8').toString('base64') };
+}
+
+function decryptSecrets(record) {
+  if (!record || !record.value) return null;
+
+  try {
+    const buffer = Buffer.from(record.value, 'base64');
+    const text = record.enc ? safeStorage.decryptString(buffer) : buffer.toString('utf8');
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function loadSettings() {
   try {
     const raw = fs.readFileSync(settingsFile(), 'utf8').replace(/^\uFEFF/, '');
     const parsed = JSON.parse(raw);
+    const restoredKeys = parsed.keysEnc ? decryptSecrets(parsed.keysEnc) : null;
+    const legacyKeys = !parsed.keysEnc && parsed.keys;
+
     settings = {
       ...DEFAULT_SETTINGS,
       ...parsed,
       hotkeys: { ...DEFAULT_SETTINGS.hotkeys, ...(parsed.hotkeys || {}) },
     };
+
+    delete settings.keysEnc;
+    if (restoredKeys) settings.keys = restoredKeys;
 
     settings.keys = { ...(settings.keys || {}) };
     if (parsed.apiKey && !settings.keys.groq) settings.keys.groq = parsed.apiKey;
@@ -167,6 +198,9 @@ function loadSettings() {
     }
 
     settings.cloudflareAccount = normalizeAccountId(settings.cloudflareAccount);
+
+    // Старый файл с ключами в открытом виде — пересохраняем в зашифрованном.
+    if (legacyKeys) persist();
   } catch {
     settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   }
@@ -175,7 +209,16 @@ function loadSettings() {
 function persist() {
   try {
     fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-    fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2), 'utf8');
+
+    const out = { ...settings };
+    delete out.keys;
+    delete out.keysEnc;
+
+    if (settings.keys && Object.keys(settings.keys).length) {
+      out.keysEnc = encryptSecrets(settings.keys);
+    }
+
+    fs.writeFileSync(settingsFile(), JSON.stringify(out, null, 2), 'utf8');
   } catch (err) {
     console.error('[settings] save failed:', err);
   }
@@ -183,6 +226,8 @@ function persist() {
 
 /** Не хватает ключа или Account ID — нужно показать настройки. */
 function needsSetup() {
+  if (settings.cloudMode && account && account.status().loggedIn) return false;
+
   const provider = providerConfig(settings.provider);
   if (!provider.noKey && !(settings.keys && settings.keys[settings.provider])) return true;
   if (provider.needsAccount && !settings.cloudflareAccount) return true;
@@ -1824,6 +1869,19 @@ function migrateLegacyData() {
     console.warn('[migrate]', err.message);
   }
 }
+
+/**
+ * Ни одно окно не должно уходить с локальных файлов на сторонние адреса.
+ * Ссылки открываем только во внешнем браузере.
+ */
+app.on('browser-window-created', (_event, win) => {
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('file://')) return;
+
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  });
+});
 
 app.whenReady().then(() => {
     app.setAppUserModelId('com.pomogator.app');

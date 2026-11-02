@@ -149,7 +149,10 @@ function createAccount({ getSettings, onChanged }) {
         clear();
         notify();
       }
-      throw new Error(data.error || `Ошибка сервера (${response.status})`);
+
+      const error = new Error(data.error || `Ошибка сервера (${response.status})`);
+      error.status = response.status;
+      throw error;
     }
 
     return data;
@@ -206,6 +209,7 @@ function createAccount({ getSettings, onChanged }) {
     }
 
     clear();
+    for (const key of Object.keys(liveSessions)) delete liveSessions[key];
     notify();
     return status();
   }
@@ -218,22 +222,57 @@ function createAccount({ getSettings, onChanged }) {
 
   /* ---------- облако ---------- */
 
+  const liveSessions = {};
+
   function normalizeKind(kind) {
     return kind === 'meeting' ? 'meeting' : 'interview';
   }
 
+  async function ensureSession(kind) {
+    const key = normalizeKind(kind);
+    const current = liveSessions[key];
+
+    if (current && current.expiresAt > Date.now()) return current.id;
+
+    const data = await request('/session/start', {
+      method: 'POST',
+      body: { kind: key },
+    });
+
+    const entry = {
+      id: data.sessionId,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    };
+
+    liveSessions[key] = entry;
+    return entry.id;
+  }
+
   async function transcribe(wav, kind, language) {
+    const key = normalizeKind(kind);
     const audio = Buffer.from(wav).toString('base64');
 
-    return request('/ai/transcribe', {
-      method: 'POST',
-      timeoutMs: 45000,
-      body: {
-        kind: normalizeKind(kind),
-        audio,
-        language: language || 'ru',
-      },
-    });
+    const send = (sessionId) =>
+      request('/ai/transcribe', {
+        method: 'POST',
+        timeoutMs: 45000,
+        body: {
+          sessionId,
+          audio,
+          language: language || 'ru',
+        },
+      });
+
+    try {
+      return await send(await ensureSession(key));
+    } catch (err) {
+      // Сессия истекла или пропала — открываем новую и повторяем один раз.
+      if (err.status === 404 || err.status === 409 || err.status === 410) {
+        delete liveSessions[key];
+        return send(await ensureSession(key));
+      }
+      throw err;
+    }
   }
 
   async function chat(messages, kind, maxTokens) {

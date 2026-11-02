@@ -69,7 +69,7 @@ const ADMIN_HTML = `<!doctype html>
     <tbody id="rows"></tbody>
   </table>
 
-<script>
+<script nonce="__NONCE__">
   const $ = (id) => document.getElementById(id);
   let token = localStorage.getItem('adminToken') || '';
   $('token').value = token;

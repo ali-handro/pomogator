@@ -1,16 +1,41 @@
 'use strict';
 
+const crypto = require('crypto');
+
 const { db } = require('./db');
-const { HttpError, rub, normEmail } = require('./util');
+const { HttpError, rub, normEmail, clientIp } = require('./util');
 const wallet = require('./wallet');
 
 const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '');
+const adminFailures = new Map();
+
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left));
+  const b = Buffer.from(String(right));
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
 
 function requireAdmin(req) {
   if (!ADMIN_TOKEN) throw new HttpError(503, 'ADMIN_TOKEN не настроен на сервере');
 
+  const ip = clientIp(req);
+  const at = Date.now();
+  const attempts = (adminFailures.get(ip) || []).filter((time) => at - time < 10 * 60 * 1000);
+
+  if (attempts.length >= 20) {
+    throw new HttpError(429, 'Слишком много попыток. Подождите 10 минут.');
+  }
+
   const given = String(req.headers['x-admin-token'] || '');
-  if (given !== ADMIN_TOKEN) throw new HttpError(403, 'Нет доступа');
+
+  if (!safeEqual(given, ADMIN_TOKEN)) {
+    attempts.push(at);
+    adminFailures.set(ip, attempts);
+    throw new HttpError(403, 'Нет доступа');
+  }
+
+  adminFailures.delete(ip);
 }
 
 function listUsers(query) {

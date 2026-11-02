@@ -27,6 +27,8 @@ function sendJson(res, status, payload) {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
     'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
   });
   res.end(body);
 }
@@ -75,8 +77,13 @@ function rub(kopecks) {
 }
 
 function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return forwarded || req.socket.remoteAddress || '';
+  const list = String(req.headers['x-forwarded-for'] || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  // Caddy добавляет реальный адрес последним: первый клиент может подделать.
+  return list.length ? list[list.length - 1] : req.socket.remoteAddress || '';
 }
 
 module.exports = {
