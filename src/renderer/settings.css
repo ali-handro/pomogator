@@ -183,14 +183,6 @@ h1 {
   margin-top: 8px;
 }
 
-#licenseStatus.ok {
-  color: var(--ok);
-}
-
-#licenseStatus.err {
-  color: #f0a35e;
-}
-
 /* ---------- аккаунт ---------- */
 
 .account-lead {
@@ -251,20 +243,6 @@ h1 {
 .device-remove:hover {
   color: #ffb4b4;
   border-color: rgba(248, 113, 113, 0.45);
-}
-
-.offline-key {
-  margin-top: 16px;
-}
-
-.offline-key summary {
-  font-size: 11.5px;
-  color: var(--dim);
-  cursor: pointer;
-}
-
-.offline-key[open] summary {
-  margin-bottom: 10px;
 }
 
 h2 {

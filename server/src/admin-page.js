@@ -47,6 +47,17 @@ const ADMIN_HTML = `<!doctype html>
   <div class="stats" id="stats"></div>
   <div id="msg"></div>
 
+  <div class="bar">
+    <input id="creditEmail" type="email" placeholder="Почта пользователя" style="min-width:240px" />
+    <input id="creditAmount" type="number" min="1" placeholder="Сумма, ₽" style="width:130px" />
+    <input id="creditComment" type="text" placeholder="Комментарий" style="min-width:200px" />
+    <button class="primary" id="creditBtn">Зачислить</button>
+  </div>
+  <p class="muted" style="margin-bottom:14px">
+    Пользователи появляются сами после первого входа по коду на почту. Здесь можно только
+    найти их и зачислить баланс.
+  </p>
+
   <table>
     <thead>
       <tr><th>Email</th><th>Баланс</th><th>Пробные</th><th>Статус</th><th>Действия</th></tr>
@@ -186,6 +197,30 @@ const ADMIN_HTML = `<!doctype html>
   };
 
   $('search').addEventListener('input', () => loadUsers());
+
+  $('creditBtn').onclick = async () => {
+    const email = $('creditEmail').value.trim();
+    const amount = Number($('creditAmount').value);
+    const comment = $('creditComment').value.trim();
+
+    if (!email || !amount) {
+      say('Укажите почту и сумму');
+      return;
+    }
+
+    try {
+      const result = await call('/admin/api/credit', {
+        method: 'POST',
+        body: JSON.stringify({ email, amountRub: amount, comment }),
+      });
+      say('Зачислено ' + amount + ' ₽, баланс ' + result.balanceRub + ' ₽', true);
+      $('creditAmount').value = '';
+      loadUsers();
+      loadStats();
+    } catch (err) {
+      say(err.message);
+    }
+  };
 
   if (token) {
     loadStats();

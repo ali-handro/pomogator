@@ -14,10 +14,6 @@ contextBridge.exposeInMainWorld('api', {
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   onSettingsChanged: (cb) => subscribe('settings:changed', cb),
 
-  /* тариф и лицензия */
-  licenseStatus: () => ipcRenderer.invoke('license:status'),
-  licenseActivate: (key) => ipcRenderer.invoke('license:activate', key),
-
   /* аккаунт */
   accountStatus: () => ipcRenderer.invoke('account:status'),
   accountRequestCode: (email) => ipcRenderer.invoke('account:request-code', email),

@@ -400,94 +400,6 @@ function renderHotkeyStatus(status) {
   applyHotkeyStatus();
 }
 
-/* ---------- тариф и лицензия ---------- */
-
-function formatUntil(ms) {
-  return ms ? new Date(ms).toLocaleDateString('ru-RU') : '';
-}
-
-function setLicenseStatus(text, kind) {
-  const el = $('licenseStatus');
-  if (!el) return;
-  el.textContent = text || '';
-  el.className = kind ? `hint ${kind}` : 'hint';
-}
-
-async function renderPlan() {
-  if (!hasApi || !window.api.licenseStatus) return;
-
-  let state;
-  try {
-    state = await window.api.licenseStatus();
-  } catch {
-    return;
-  }
-  if (!state) return;
-
-  const name = $('planName');
-  const note = $('planNote');
-  const usage = $('planUsage');
-  const buy = $('planBuy');
-  if (!name || !note || !usage) return;
-
-  name.className = 'plan-name';
-
-  if (state.plan === 'free') {
-    name.textContent = 'Бесплатно';
-    note.textContent = 'Полная версия снимает дневные лимиты.';
-  } else if (state.plan === 'trial') {
-    name.textContent = 'Пробный период';
-    name.classList.add('trial');
-    note.textContent = `Осталось ${state.daysLeft} дн. — доступно всё без ограничений.`;
-  } else {
-    name.textContent = state.label;
-    name.classList.add('paid');
-    note.textContent = state.exp
-      ? `Действует до ${formatUntil(state.exp)} · ${state.daysLeft} дн.`
-      : 'Бессрочная лицензия';
-  }
-
-  if (state.paid) {
-    usage.innerHTML = '<b>Без ограничений</b> — ответы, скриншоты и встречи.';
-  } else {
-    usage.innerHTML =
-      `Ответы сегодня: <b>${state.remaining.answers}</b> из ${state.limits.answersPerDay}` +
-      ` · Скриншоты: <b>${state.remaining.screenshots}</b> из ${state.limits.screenshotsPerDay}`;
-  }
-
-  const url = String(settings.purchaseUrl || '').trim();
-  if (buy) {
-    buy.hidden = !url;
-    buy.onclick = () => window.api.openExternal(url);
-  }
-}
-
-async function activateLicense() {
-  if (!hasApi || !window.api.licenseActivate) return;
-
-  const input = $('licenseKey');
-  const key = input ? input.value.trim() : '';
-
-  if (!key) {
-    setLicenseStatus('Вставьте ключ активации', 'err');
-    return;
-  }
-
-  try {
-    const result = await window.api.licenseActivate(key);
-
-    if (result && result.ok) {
-      if (input) input.value = '';
-      setLicenseStatus(`Готово: тариф «${result.state.label}»`, 'ok');
-      await renderPlan();
-    } else {
-      setLicenseStatus((result && result.error) || 'Не удалось активировать ключ', 'err');
-    }
-  } catch (err) {
-    setLicenseStatus(`Ошибка: ${err.message}`, 'err');
-  }
-}
-
 /* ---------- аккаунт ---------- */
 
 let accountState = null;
@@ -653,7 +565,6 @@ function fill() {
   renderSttSource();
   fillSimpleFields();
   renderHotkeys();
-  renderPlan();
   renderAccount();
 }
 
@@ -922,9 +833,6 @@ function bind() {
     if (hasApi) window.api.openQuiz();
   });
 
-  const licenseActivateBtn = $('licenseActivate');
-  if (licenseActivateBtn) licenseActivateBtn.addEventListener('click', activateLicense);
-
   const accountLoginBtn = $('accountLogin');
   if (accountLoginBtn) {
     accountLoginBtn.addEventListener('click', () => {
@@ -949,13 +857,6 @@ function bind() {
       }
 
       refreshCloudQuote();
-    });
-  }
-
-  const licenseKeyInput = $('licenseKey');
-  if (licenseKeyInput) {
-    licenseKeyInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') activateLicense();
     });
   }
 

@@ -4,7 +4,6 @@ dist/
 npm-debug.log*
 Thumbs.db
 .DS_Store
-tools/license-private.pem
 
 # сервер
 server/data/
