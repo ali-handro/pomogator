@@ -1552,6 +1552,62 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle('models:list', async (_event, kind) => {
+    const stt = kind === 'stt';
+    const cfg = stt ? settings.stt || {} : settings.ai || {};
+    const baseUrl = String(cfg.baseUrl || '')
+      .replace('{accountId}', String(cfg.accountId || '').trim())
+      .replace(/\/+$/, '');
+    const apiKey = stt
+      ? (settings.keys && settings.keys.stt) || ''
+      : (settings.keys && settings.keys.ai) || '';
+
+    if (!baseUrl) return { ok: false, error: 'Не указан адрес API' };
+
+    // Cloudflare Workers AI не отдаёт /models на этом адресе — готовый список.
+    if (stt && cfg.format === 'cloudflare') {
+      return {
+        ok: true,
+        models: [
+          '@cf/deepgram/nova-3',
+          '@cf/openai/whisper-large-v3-turbo',
+          '@cf/openai/whisper',
+        ],
+      };
+    }
+
+    try {
+      const headers = {};
+      if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+
+      const response = await net.fetch(`${baseUrl}/models`, {
+        headers,
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+
+      const data = await response.json().catch(() => ({}));
+      const list = Array.isArray(data.data)
+        ? data.data
+        : Array.isArray(data.models)
+          ? data.models
+          : [];
+
+      const models = [
+        ...new Set(
+          list
+            .map((item) => (typeof item === 'string' ? item : item.id || item.name))
+            .filter(Boolean)
+        ),
+      ].sort();
+
+      return { ok: true, models };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('llm:ask', async (_event, payload) => {
     const question = String((payload && payload.question) || '').trim();
     if (!question) return { ok: false, error: 'Пустой вопрос' };

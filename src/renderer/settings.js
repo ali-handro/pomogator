@@ -47,12 +47,71 @@ let lastHotkeyStatus = { failed: [] };
 
 const $ = (id) => document.getElementById(id);
 
+const AI_MODEL_PRESETS = [
+  'glm-5.3-flash',
+  'deepseek-v4.1-flash',
+  'qwen3.8-flash',
+  'mimo-v2.6-flash',
+  'kimi-k3',
+];
+
+const STT_MODEL_PRESETS = {
+  cloudflare: ['@cf/deepgram/nova-3', '@cf/openai/whisper-large-v3-turbo', '@cf/openai/whisper'],
+  openai: [
+    'whisper-1',
+    'whisper-large-v3',
+    'whisper-large-v3-turbo',
+    'gpt-4o-transcribe',
+    'gpt-4o-mini-transcribe',
+    'voxtral-mini-latest',
+  ],
+};
+
+let aiModelsCache = [];
+let sttModelsCache = [];
+
+function fillModelSelect(select, current, list) {
+  if (!select) return;
+
+  const values = [...new Set([current, ...(list || [])].filter(Boolean))];
+  select.innerHTML = '';
+
+  for (const id of values) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = id;
+    select.appendChild(option);
+  }
+
+  const custom = document.createElement('option');
+  custom.value = '__custom__';
+  custom.textContent = 'Другая модель…';
+  select.appendChild(custom);
+
+  const hasCurrent = current && values.includes(current);
+  select.value = hasCurrent ? current : '__custom__';
+
+  syncSelect(select);
+}
+
+function syncModelInput(select, input) {
+  if (!select || !input) return;
+  input.hidden = select.value !== '__custom__';
+}
+
 function renderAi() {
   const ai = settings.ai || {};
 
   if ($('aiBaseUrl')) $('aiBaseUrl').value = ai.baseUrl || '';
   if ($('aiKey')) $('aiKey').value = (settings.keys && settings.keys.ai) || '';
   if ($('aiAccountId')) $('aiAccountId').value = ai.accountId || '';
+
+  fillModelSelect(
+    $('aiModelSelect'),
+    ai.model,
+    aiModelsCache.length ? aiModelsCache : AI_MODEL_PRESETS
+  );
+  syncModelInput($('aiModelSelect'), $('aiModel'));
   if ($('aiModel')) $('aiModel').value = ai.model || '';
 }
 
@@ -592,7 +651,16 @@ function renderStt() {
   if ($('sttBaseUrl')) $('sttBaseUrl').value = stt.baseUrl || '';
   if ($('sttAccountId')) $('sttAccountId').value = stt.accountId || '';
   if ($('sttKey')) $('sttKey').value = (settings.keys && settings.keys.stt) || '';
+
+  const sttPresets = STT_MODEL_PRESETS[stt.format === 'cloudflare' ? 'cloudflare' : 'openai'] || [];
+  fillModelSelect(
+    $('sttModelSelect'),
+    stt.model,
+    sttModelsCache.length ? sttModelsCache : sttPresets
+  );
+  syncModelInput($('sttModelSelect'), $('sttModelInput'));
   if ($('sttModelInput')) $('sttModelInput').value = stt.model || '';
+
   if ($('sttLanguage')) $('sttLanguage').value = stt.language || 'ru';
 
   const modeField = $('sttModeField');
@@ -718,6 +786,52 @@ function bind() {
     scheduleSave();
   });
 
+  $('aiModelSelect').addEventListener('change', () => {
+    const select = $('aiModelSelect');
+    const value = select.value;
+
+    if (value === '__custom__') {
+      syncModelInput(select, $('aiModel'));
+      if ($('aiModel')) $('aiModel').focus();
+      return;
+    }
+
+    settings.ai = { ...(settings.ai || {}), model: value };
+    syncModelInput(select, $('aiModel'));
+    if ($('aiModel')) $('aiModel').value = value;
+    scheduleSave();
+  });
+
+  $('aiModelsRefresh').addEventListener('click', async () => {
+    const btn = $('aiModelsRefresh');
+    const status = $('aiModelsStatus');
+
+    btn.disabled = true;
+    btn.textContent = 'загружаю…';
+    if (status) status.textContent = '';
+
+    try {
+      const result = await window.api.listModels('ai');
+
+      if (result && result.ok) {
+        aiModelsCache = result.models || [];
+        if (status) status.textContent = `Доступно моделей: ${aiModelsCache.length}`;
+      } else if (status) {
+        const message = (result && result.error) || '';
+        status.textContent =
+          message.includes('404')
+            ? 'Сервер не отдаёт список моделей — выберите готовую или впишите вручную'
+            : message || 'Не удалось получить список';
+      }
+
+      renderAi();
+      syncAllSelects();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'получить список';
+    }
+  });
+
   $('overlayDisplay').addEventListener('change', () => {
     settings.overlayDisplay = Number($('overlayDisplay').value) || 0;
     scheduleSave();
@@ -743,6 +857,8 @@ function bind() {
       ...(settings.stt || {}),
       format: $('sttFormat').value === 'cloudflare' ? 'cloudflare' : 'openai',
     };
+    sttModelsCache = [];
+    renderStt();
     scheduleSave();
   });
 
@@ -764,6 +880,52 @@ function bind() {
   $('sttModelInput').addEventListener('input', () => {
     settings.stt = { ...(settings.stt || {}), model: $('sttModelInput').value.trim() };
     scheduleSave();
+  });
+
+  $('sttModelSelect').addEventListener('change', () => {
+    const select = $('sttModelSelect');
+    const value = select.value;
+
+    if (value === '__custom__') {
+      syncModelInput(select, $('sttModelInput'));
+      if ($('sttModelInput')) $('sttModelInput').focus();
+      return;
+    }
+
+    settings.stt = { ...(settings.stt || {}), model: value };
+    syncModelInput(select, $('sttModelInput'));
+    if ($('sttModelInput')) $('sttModelInput').value = value;
+    scheduleSave();
+  });
+
+  $('sttModelsRefresh').addEventListener('click', async () => {
+    const btn = $('sttModelsRefresh');
+    const status = $('sttModelsStatus');
+
+    btn.disabled = true;
+    btn.textContent = 'загружаю…';
+    if (status) status.textContent = '';
+
+    try {
+      const result = await window.api.listModels('stt');
+
+      if (result && result.ok) {
+        sttModelsCache = result.models || [];
+        if (status) status.textContent = `Доступно моделей: ${sttModelsCache.length}`;
+      } else if (status) {
+        const message = (result && result.error) || '';
+        status.textContent =
+          message.includes('404')
+            ? 'Сервер не отдаёт список моделей — выберите готовую или впишите вручную'
+            : message || 'Не удалось получить список';
+      }
+
+      renderStt();
+      syncAllSelects();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'получить список';
+    }
   });
 
   $('sttLanguage').addEventListener('change', () => {

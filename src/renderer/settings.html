@@ -123,14 +123,20 @@
           </label>
 
           <label class="field">
-            <span class="label">Модель</span>
+            <span class="label">
+              Модель
+              <button type="button" class="link" id="aiModelsRefresh">получить список</button>
+            </span>
+            <select id="aiModelSelect"></select>
             <input
               type="text"
               id="aiModel"
-              placeholder="glm-5.3-flash"
+              placeholder="имя модели"
               spellcheck="false"
               autocomplete="off"
+              hidden
             />
+            <span class="hint" id="aiModelsStatus"></span>
           </label>
 
           <div class="test-row">
@@ -266,14 +272,20 @@
             </label>
 
             <label class="field">
-              <span class="label">Модель</span>
+              <span class="label">
+                Модель
+                <button type="button" class="link" id="sttModelsRefresh">получить список</button>
+              </span>
+              <select id="sttModelSelect"></select>
               <input
                 type="text"
                 id="sttModelInput"
                 placeholder="@cf/deepgram/nova-3"
                 spellcheck="false"
                 autocomplete="off"
+                hidden
               />
+              <span class="hint" id="sttModelsStatus"></span>
             </label>
 
             <label class="field">
