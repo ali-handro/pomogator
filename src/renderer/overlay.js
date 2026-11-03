@@ -38,6 +38,8 @@ const el = {
   btnReview: document.getElementById('btnReview'),
   btnCopy: document.getElementById('btnCopy'),
   toast: document.getElementById('toast'),
+  cloudBalance: document.getElementById('cloudBalance'),
+  cloudSep: document.getElementById('cloudSep'),
   histCount: document.getElementById('histCount'),
   btnRegen: document.getElementById('btnRegen'),
   btnClear: document.getElementById('btnClear'),
@@ -985,10 +987,9 @@ function renderSourceButton() {
 }
 
 function applySettings() {
-  const model = String(settings.model || '').split('/').pop() || '';
-  el.modelLabel.textContent = model
-    .replace(/-instruct.*$/, '')
-    .replace(/-fp8.*$/, '') || 'модель не выбрана';
+  const model = String((settings.ai && settings.ai.model) || '').split('/').pop() || '';
+  el.modelLabel.textContent =
+    model.replace(/-instruct.*$/, '').replace(/-fp8.*$/, '') || 'модель не выбрана';
   document.body.dataset.interactive = String(!settings.clickThrough);
 
   const alpha = Math.min(1, Math.max(0.3, Number(settings.opacity) || 0.94));
@@ -1004,14 +1005,14 @@ function applySettings() {
     ? `${pauseHotkey()} — пауза · Ctrl+Shift+Space — скрыть`
     : `Клик-режим · Ctrl+Shift+E — выключить · ${pauseHotkey()} — пауза`;
 
-  const provider = settings.provider || 'cloudflare';
-  const key = settings.keys && settings.keys[provider];
-  const needsAccount = provider === 'cloudflare' && !settings.cloudflareAccount;
+  const configured =
+    !!(settings.ai && settings.ai.baseUrl && settings.ai.model) || !!settings.cloudMode;
 
   if (state === 'error') return;
 
-  if (!key || needsAccount) {
-    el.hint.textContent = 'Нет ключа. Трей → «Настройки» → вставьте ключ.';
+  if (!configured) {
+    el.hint.textContent =
+      'Не настроено подключение. Трей → «Настройки» → укажите адрес API и модель.';
     if (stt.listening) setListening(false, false);
   } else {
     el.hint.textContent =
@@ -1020,6 +1021,49 @@ function applySettings() {
         : 'Слушаю микрофон. Задайте вопрос — ответ появится здесь.';
     if (!stt.listening && !stt.pausedByUser) setListening(true, false);
   }
+}
+
+/* ---------- баланс облака ---------- */
+
+let cloudBalanceAt = 0;
+
+async function refreshCloudBalance() {
+  const box = el.cloudBalance;
+  const sep = el.cloudSep;
+  if (!box || !sep || !hasApi || !window.api.accountQuote) return;
+
+  if (!settings.cloudMode) {
+    box.hidden = true;
+    sep.hidden = true;
+    return;
+  }
+
+  try {
+    const quote = await window.api.accountQuote('interview');
+
+    if (!quote || !quote.ok) {
+      box.hidden = true;
+      sep.hidden = true;
+      return;
+    }
+
+    const minutes = Math.max(0, Math.floor(quote.remainingSeconds / 60));
+    const rub = Number(quote.balanceRub || 0).toFixed(2);
+
+    box.textContent = `облако: ${minutes} мин · ${rub} ₽`;
+    box.classList.toggle('low', minutes < 5);
+    box.hidden = false;
+    sep.hidden = false;
+    cloudBalanceAt = Date.now();
+  } catch {
+    box.hidden = true;
+    sep.hidden = true;
+  }
+}
+
+function scheduleCloudBalance() {
+  if (Date.now() - cloudBalanceAt < 30000) return;
+  refreshCloudBalance();
 }
 
 async function toggleSource() {
@@ -1130,7 +1174,12 @@ function bindIpc() {
     settings = next;
     applySettings();
     ensureSource();
+    refreshCloudBalance();
   });
+
+  if (window.api.onCloudUsage) {
+    window.api.onCloudUsage(() => scheduleCloudBalance());
+  }
 
   window.api.onClickThrough((value) => {
     document.body.dataset.interactive = String(!value);
@@ -1249,6 +1298,9 @@ async function boot() {
   await ensureSource();
   setListening(settings.listen !== false, true);
   applySettings();
+
+  refreshCloudBalance();
+  setInterval(refreshCloudBalance, 60000);
 
   if (!hasApi) {
     el.hint.textContent = 'Это предпросмотр без доступа к API.';

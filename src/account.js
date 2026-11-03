@@ -23,6 +23,7 @@ function createAccount({ getSettings, onChanged }) {
     deviceId: '',
     expiresAt: 0,
     profile: null,
+    profileAt: 0,
   };
 
   function accountFile() {
@@ -75,6 +76,8 @@ function createAccount({ getSettings, onChanged }) {
       state.email = String(data.email || '');
       state.deviceId = String(data.deviceId || '');
       state.expiresAt = Number(data.expiresAt) || 0;
+      state.profile = data.profile || null;
+      state.profileAt = Number(data.profileAt) || 0;
       state.token = decrypt(data.token);
 
       if (!state.token || (state.expiresAt && state.expiresAt < Date.now())) {
@@ -82,7 +85,7 @@ function createAccount({ getSettings, onChanged }) {
         state.profile = null;
       }
     } catch {
-      state = { token: '', email: '', deviceId: '', expiresAt: 0, profile: null };
+      state = { token: '', email: '', deviceId: '', expiresAt: 0, profile: null, profileAt: 0 };
     }
   }
 
@@ -92,6 +95,8 @@ function createAccount({ getSettings, onChanged }) {
         email: state.email,
         deviceId: state.deviceId,
         expiresAt: state.expiresAt,
+        profile: state.profile,
+        profileAt: state.profileAt,
         token: state.token ? encrypt(state.token) : null,
       };
 
@@ -102,7 +107,7 @@ function createAccount({ getSettings, onChanged }) {
   }
 
   function clear() {
-    state = { token: '', email: '', deviceId: '', expiresAt: 0, profile: null };
+    state = { token: '', email: '', deviceId: '', expiresAt: 0, profile: null, profileAt: 0 };
 
     try {
       fs.rmSync(accountFile(), { force: true });
@@ -119,6 +124,7 @@ function createAccount({ getSettings, onChanged }) {
       expiresAt: state.expiresAt,
       apiBase: apiBase(),
       profile: state.profile,
+      profileAt: state.profileAt,
     };
   }
 
@@ -192,6 +198,7 @@ function createAccount({ getSettings, onChanged }) {
 
     const data = await request('/me');
     state.profile = data;
+    state.profileAt = Date.now();
     state.email = data.user.email;
     save();
     notify();

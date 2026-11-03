@@ -2,21 +2,23 @@
 
 const hasApi = typeof window.api !== 'undefined';
 
-const FALLBACK_PROVIDERS = {
-  cloudflare: {
-    label: 'Cloudflare Workers AI',
-    models: ['@cf/meta/llama-3.3-70b-instruct-fp8-fast'],
-    defaultModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-    keyUrl: 'https://dash.cloudflare.com/profile/api-tokens',
-    note: 'Бесплатно: 10 000 нейронов в день',
-    needsAccount: true,
-  },
-};
-
 let settings = {
-  provider: 'cloudflare',
-  model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  provider: 'opencode',
+  model: 'glm-5.3-flash',
   cloudflareAccount: '',
+  ai: {
+    baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    accountId: '',
+    model: 'glm-5.3-flash',
+  },
+  stt: {
+    mode: 'api',
+    format: 'cloudflare',
+    baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run',
+    accountId: '',
+    model: '@cf/deepgram/nova-3',
+    language: 'ru',
+  },
   keys: {},
   style: 'concise',
   language: 'ru',
@@ -34,13 +36,10 @@ let settings = {
   resume: '',
   job: '',
   contextPrompt: '',
-  sttProvider: 'cloudflare',
-  sttModel: '@cf/deepgram/nova-3',
   localSttModel: 'base',
   cloudMode: false,
 };
 
-let providers = FALLBACK_PROVIDERS;
 let displays = [];
 let saveTimer = null;
 let toastTimer = null;
@@ -48,87 +47,13 @@ let lastHotkeyStatus = { failed: [] };
 
 const $ = (id) => document.getElementById(id);
 
-function providerInfo() {
-  return (
-    providers[settings.provider] || {
-      label: '',
-      models: [],
-      defaultModel: '',
-      keyUrl: '',
-      note: '',
-      noKey: false,
-    }
-  );
-}
+function renderAi() {
+  const ai = settings.ai || {};
 
-function renderProviders() {
-  const select = $('provider');
-  select.innerHTML = '';
-
-  for (const [id, info] of Object.entries(providers)) {
-    const option = document.createElement('option');
-    option.value = id;
-    option.textContent = info.label;
-    select.appendChild(option);
-  }
-
-  if (!providers[settings.provider]) {
-    settings.provider = Object.keys(providers)[0] || 'cloudflare';
-  }
-  select.value = settings.provider;
-}
-
-function renderModels() {
-  const info = providerInfo();
-  const select = $('model');
-  const models = info.models || [];
-
-  select.innerHTML = '';
-  for (const model of models) {
-    const option = document.createElement('option');
-    option.value = model;
-    option.textContent = model;
-    select.appendChild(option);
-  }
-
-  if (!models.includes(settings.model)) {
-    settings.model = info.defaultModel || models[0] || '';
-  }
-  select.value = settings.model;
-
-  $('providerNote').textContent = info.note || '';
-
-  const accountField = $('accountField');
-  if (accountField) accountField.hidden = !info.needsAccount;
-  const accountInput = $('cloudflareAccount');
-  if (accountInput) {
-    accountInput.value = settings.cloudflareAccount || '';
-  }
-
-  const link = $('getKey');
-  if (info.noKey) {
-    link.textContent = 'локальный запуск';
-    link.style.visibility = 'hidden';
-  } else {
-    link.textContent = 'получить ключ →';
-    link.style.visibility = 'visible';
-  }
-}
-
-function renderKey() {
-  const info = providerInfo();
-  const input = $('apiKey');
-
-  if (info.noKey) {
-    input.value = '';
-    input.disabled = true;
-    input.placeholder = 'ключ не нужен';
-    return;
-  }
-
-  input.disabled = false;
-  input.placeholder = 'вставьте ключ';
-  input.value = (settings.keys && settings.keys[settings.provider]) || '';
+  if ($('aiBaseUrl')) $('aiBaseUrl').value = ai.baseUrl || '';
+  if ($('aiKey')) $('aiKey').value = (settings.keys && settings.keys.ai) || '';
+  if ($('aiAccountId')) $('aiAccountId').value = ai.accountId || '';
+  if ($('aiModel')) $('aiModel').value = ai.model || '';
 }
 
 function rangeLabel(key) {
@@ -430,6 +355,7 @@ function renderHotkeyStatus(status) {
 /* ---------- аккаунт ---------- */
 
 let accountState = null;
+let accountOffline = false;
 
 function renderDevices() {
   const box = $('accountDevices');
@@ -508,9 +434,24 @@ function renderAccountState() {
 
     $('accountUsage').innerHTML =
       `Баланс: <b>${balance.toFixed(2)} ₽</b> · пробные: <b>${trial}</b> из ${trialTotal} мин`;
+
+    if (accountOffline) {
+      const stamp = accountState.profileAt
+        ? new Date(accountState.profileAt).toLocaleTimeString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+
+      $('accountNote').textContent += stamp
+        ? ` · нет связи, данные на ${stamp}`
+        : ' · нет связи';
+    }
   } else {
-    $('accountNote').textContent = 'Профиль не загружен';
-    $('accountUsage').textContent = '';
+    $('accountNote').textContent = accountOffline ? 'Нет связи с сервером' : 'Профиль не загружен';
+    $('accountUsage').textContent = accountOffline
+      ? 'Баланс и минуты появятся после подключения'
+      : '';
   }
 
   renderDevices();
@@ -528,24 +469,35 @@ async function refreshCloudQuote() {
   const hint = $('cloudHint');
   if (!hint || !hasApi || !window.api.accountQuote) return;
 
+  const wallet = accountState && accountState.profile && accountState.profile.wallet;
+
   try {
     const [interview, meeting] = await Promise.all([
       window.api.accountQuote('interview'),
       window.api.accountQuote('meeting'),
     ]);
 
-    const parts = [];
-
-    if (interview && interview.ok) {
-      parts.push(`собеседование ${Math.floor(interview.remainingSeconds / 60)} мин`);
+    if (interview && interview.ok && meeting && meeting.ok) {
+      hint.textContent =
+        `Осталось: собеседование ${Math.floor(interview.remainingSeconds / 60)} мин` +
+        ` · встречи ${Math.floor(meeting.remainingSeconds / 60)} мин`;
+      return;
     }
-    if (meeting && meeting.ok) {
-      parts.push(`встречи ${Math.floor(meeting.remainingSeconds / 60)} мин`);
-    }
-
-    hint.textContent = parts.length ? `Осталось: ${parts.join(' · ')}` : '';
   } catch {
-    hint.textContent = '';
+    /* ниже показываем кэш */
+  }
+
+  if (wallet) {
+    const balance = Number(wallet.balanceRub || 0);
+    const trial = Number(wallet.trialMinutesLeft || 0);
+    const interviewMin = Math.floor(trial + (balance * 60) / 449);
+    const meetingMin = Math.floor(trial + (balance * 60) / 150);
+
+    hint.textContent =
+      `Нет связи. По последним данным: собеседование ${interviewMin} мин` +
+      ` · встречи ${meetingMin} мин`;
+  } else {
+    hint.textContent = 'Нет связи с сервером';
   }
 }
 
@@ -563,13 +515,15 @@ async function renderAccount() {
   if (accountState && accountState.loggedIn) {
     try {
       const result = await window.api.accountRefresh();
-      if (result && result.state) {
-        accountState = result.state;
-        renderAccountState();
-      }
+      if (result && result.state) accountState = result.state;
+      accountOffline = !(result && result.ok);
     } catch {
-      /* сервер недоступен — показываем то, что есть */
+      accountOffline = true;
     }
+
+    renderAccountState();
+  } else {
+    accountOffline = false;
   }
 }
 
@@ -587,39 +541,37 @@ async function logoutAccount() {
 }
 
 function fill() {
-  renderProviders();
-  renderModels();
-  renderKey();
+  renderAi();
   renderDisplays();
-  renderSttModel();
-  renderSttSource();
+  renderStt();
   fillSimpleFields();
   renderHotkeys();
   renderAccount();
+  syncAllSelects();
 }
 
-function renderSttModel() {
-  const select = $('sttModel');
-  if (!select) return;
-  const current = String(settings.sttModel || '');
-  select.value = /^@cf\/deepgram\//.test(current)
-    ? '@cf/deepgram/nova-3'
-    : '@cf/openai/whisper-large-v3-turbo';
-}
+function renderStt() {
+  const stt = settings.stt || {};
+  const local = stt.mode === 'local';
 
-function renderSttSource() {
-  const local = settings.sttProvider === 'local';
-  const source = $('sttSource');
-  if (source) source.value = local ? 'local' : 'cloudflare';
+  if ($('sttMode')) $('sttMode').value = local ? 'local' : 'api';
+  if ($('sttFormat')) $('sttFormat').value = stt.format === 'cloudflare' ? 'cloudflare' : 'openai';
+  if ($('sttBaseUrl')) $('sttBaseUrl').value = stt.baseUrl || '';
+  if ($('sttAccountId')) $('sttAccountId').value = stt.accountId || '';
+  if ($('sttKey')) $('sttKey').value = (settings.keys && settings.keys.stt) || '';
+  if ($('sttModelInput')) $('sttModelInput').value = stt.model || '';
+  if ($('sttLanguage')) $('sttLanguage').value = stt.language || 'ru';
 
-  const cloudBlock = $('sttCloudBlock');
-  if (cloudBlock) cloudBlock.hidden = local;
+  const apiBlock = $('sttApiBlock');
+  if (apiBlock) apiBlock.hidden = local;
 
   const localBlock = $('sttLocalBlock');
   if (localBlock) localBlock.hidden = !local;
 
   const localModel = $('localSttModel');
   if (localModel) localModel.value = settings.localSttModel === 'small' ? 'small' : 'base';
+
+  syncAllSelects();
 
   if (local) refreshLocalStatus();
 }
@@ -673,26 +625,23 @@ function showToast() {
 }
 
 function bind() {
-  $('provider').addEventListener('change', () => {
-    settings.provider = $('provider').value;
-    settings.model = providerInfo().defaultModel || '';
-    renderModels();
-    renderKey();
+  $('aiBaseUrl').addEventListener('input', () => {
+    settings.ai = { ...(settings.ai || {}), baseUrl: $('aiBaseUrl').value.trim() };
     scheduleSave();
   });
 
-  $('model').addEventListener('change', () => {
-    settings.model = $('model').value;
+  $('aiAccountId').addEventListener('input', () => {
+    settings.ai = { ...(settings.ai || {}), accountId: $('aiAccountId').value.trim() };
     scheduleSave();
   });
 
-  $('apiKey').addEventListener('input', () => {
-    settings.keys = { ...(settings.keys || {}), [settings.provider]: $('apiKey').value.trim() };
+  $('aiKey').addEventListener('input', () => {
+    settings.keys = { ...(settings.keys || {}), ai: $('aiKey').value.trim() };
     scheduleSave();
   });
 
-  $('cloudflareAccount').addEventListener('input', () => {
-    settings.cloudflareAccount = $('cloudflareAccount').value.trim();
+  $('aiModel').addEventListener('input', () => {
+    settings.ai = { ...(settings.ai || {}), model: $('aiModel').value.trim() };
     scheduleSave();
   });
 
@@ -706,14 +655,45 @@ function bind() {
     scheduleSave();
   });
 
-  $('sttModel').addEventListener('change', () => {
-    settings.sttModel = $('sttModel').value;
+  $('sttMode').addEventListener('change', () => {
+    settings.stt = {
+      ...(settings.stt || {}),
+      mode: $('sttMode').value === 'local' ? 'local' : 'api',
+    };
+    renderStt();
     scheduleSave();
   });
 
-  $('sttSource').addEventListener('change', () => {
-    settings.sttProvider = $('sttSource').value === 'local' ? 'local' : 'cloudflare';
-    renderSttSource();
+  $('sttFormat').addEventListener('change', () => {
+    settings.stt = {
+      ...(settings.stt || {}),
+      format: $('sttFormat').value === 'cloudflare' ? 'cloudflare' : 'openai',
+    };
+    scheduleSave();
+  });
+
+  $('sttBaseUrl').addEventListener('input', () => {
+    settings.stt = { ...(settings.stt || {}), baseUrl: $('sttBaseUrl').value.trim() };
+    scheduleSave();
+  });
+
+  $('sttAccountId').addEventListener('input', () => {
+    settings.stt = { ...(settings.stt || {}), accountId: $('sttAccountId').value.trim() };
+    scheduleSave();
+  });
+
+  $('sttKey').addEventListener('input', () => {
+    settings.keys = { ...(settings.keys || {}), stt: $('sttKey').value.trim() };
+    scheduleSave();
+  });
+
+  $('sttModelInput').addEventListener('input', () => {
+    settings.stt = { ...(settings.stt || {}), model: $('sttModelInput').value.trim() };
+    scheduleSave();
+  });
+
+  $('sttLanguage').addEventListener('change', () => {
+    settings.stt = { ...(settings.stt || {}), language: $('sttLanguage').value };
     scheduleSave();
   });
 
@@ -785,11 +765,6 @@ function bind() {
     });
   }
 
-  $('accountHelp').addEventListener('click', (event) => {
-    event.preventDefault();
-    if (hasApi) window.api.openExternal('https://dash.cloudflare.com/');
-  });
-
   document.querySelectorAll('[data-key]').forEach((input) => {
     input.addEventListener('input', () => {
       const key = input.dataset.key;
@@ -807,17 +782,18 @@ function bind() {
     });
   });
 
-  $('toggleKey').addEventListener('click', () => {
-    const input = $('apiKey');
+  $('toggleAiKey').addEventListener('click', () => {
+    const input = $('aiKey');
     const hidden = input.type === 'password';
     input.type = hidden ? 'text' : 'password';
-    $('toggleKey').textContent = hidden ? '🙈' : '👁';
+    $('toggleAiKey').textContent = hidden ? '🙈' : '👁';
   });
 
-  $('getKey').addEventListener('click', (event) => {
-    event.preventDefault();
-    const info = providerInfo();
-    if (hasApi && info.keyUrl) window.api.openExternal(info.keyUrl);
+  $('toggleSttKey').addEventListener('click', () => {
+    const input = $('sttKey');
+    const hidden = input.type === 'password';
+    input.type = hidden ? 'text' : 'password';
+    $('toggleSttKey').textContent = hidden ? '🙈' : '👁';
   });
 
   $('testBtn').addEventListener('click', async () => {
@@ -922,12 +898,110 @@ function bind() {
   });
 }
 
+/* ---------- свои выпадающие списки ---------- */
+
+const selectBindings = new WeakMap();
+
+function syncSelect(select) {
+  const binding = selectBindings.get(select);
+  if (!binding) return;
+
+  const option = select.options[select.selectedIndex];
+  binding.label.textContent = option ? option.textContent : '';
+}
+
+function syncAllSelects() {
+  document.querySelectorAll('select').forEach(syncSelect);
+}
+
+function enhanceSelects() {
+  document.querySelectorAll('select').forEach((select) => {
+    if (selectBindings.has(select)) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'select';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'select-button';
+
+    const label = document.createElement('span');
+    label.className = 'select-label';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'select-chevron';
+    chevron.textContent = '▾';
+
+    button.append(label, chevron);
+
+    const menu = document.createElement('div');
+    menu.className = 'select-menu';
+    menu.hidden = true;
+
+    select.parentNode.insertBefore(wrap, select);
+    wrap.append(select, button, menu);
+    select.classList.add('select-native');
+
+    const binding = { label, menu, button };
+    selectBindings.set(select, binding);
+
+    const renderMenu = () => {
+      menu.innerHTML = '';
+
+      for (const option of select.options) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'select-option';
+        item.textContent = option.textContent;
+        if (option.value === select.value) item.classList.add('active');
+
+        item.addEventListener('click', () => {
+          select.value = option.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          close();
+        });
+
+        menu.appendChild(item);
+      }
+    };
+
+    const close = () => {
+      menu.hidden = true;
+      button.classList.remove('open');
+    };
+
+    const open = () => {
+      document.querySelectorAll('.select-menu').forEach((other) => {
+        if (other !== menu) other.hidden = true;
+      });
+
+      renderMenu();
+      menu.hidden = false;
+      button.classList.add('open');
+    };
+
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (menu.hidden) open();
+      else close();
+    });
+
+    menu.addEventListener('click', (event) => event.stopPropagation());
+
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') close();
+    });
+
+    syncSelect(select);
+  });
+}
+
 async function boot() {
   if (hasApi) {
     try {
       settings = await window.api.getSettings();
       settings.keys = settings.keys || {};
-      providers = await window.api.getProviders();
       displays = await window.api.getDisplays();
 
       const info = await window.api.appInfo();
@@ -940,7 +1014,22 @@ async function boot() {
 
       window.api.onSettingsChanged((next) => {
         const active = document.activeElement;
-        const editing = active && active.dataset && active.dataset.key;
+        const editing =
+          active &&
+          (active.dataset.key ||
+            [
+              'aiBaseUrl',
+              'aiAccountId',
+              'aiKey',
+              'aiModel',
+              'sttBaseUrl',
+              'sttAccountId',
+              'sttKey',
+              'sttModelInput',
+              'sttMode',
+              'sttFormat',
+              'sttLanguage',
+            ].includes(active.id));
         settings = next;
         settings.keys = settings.keys || {};
         renderHotkeys();
@@ -966,8 +1055,13 @@ async function boot() {
     }
   }
 
+  enhanceSelects();
   fill();
   bind();
+
+  window.addEventListener('focus', () => {
+    if (accountState && accountState.loggedIn) renderAccount();
+  });
 }
 
 window.addEventListener('DOMContentLoaded', boot);

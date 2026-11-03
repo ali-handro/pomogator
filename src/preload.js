@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('api', {
   onLlmDelta: (cb) => subscribe('llm:delta', cb),
   onLlmDone: (cb) => subscribe('llm:done', cb),
   onLlmError: (cb) => subscribe('llm:error', cb),
+  onCloudUsage: (cb) => subscribe('cloud:usage', cb),
 
   /* распознавание речи */
   transcribe: (audio, override) => ipcRenderer.invoke('stt:transcribe', { audio, override }),

@@ -76,9 +76,16 @@ function delay(ms, signal) {
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_SETTINGS = {
-  provider: 'cloudflare',
-  model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  /* устаревшие поля — нужны только для миграции */
+  provider: 'opencode',
+  model: 'glm-5.3-flash',
   cloudflareAccount: '',
+  /* своё подключение к модели */
+  ai: {
+    baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    accountId: '',
+    model: 'glm-5.3-flash',
+  },
   keys: {},
   style: 'concise', // concise | star | technical
   language: 'ru',
@@ -96,8 +103,16 @@ const DEFAULT_SETTINGS = {
   job: '',
   contextPrompt: '',
   /* распознавание речи */
-  sttProvider: 'cloudflare',
-  sttModel: '@cf/deepgram/nova-3',
+  sttProvider: 'cloudflare', // устарело
+  sttModel: '@cf/deepgram/nova-3', // устарело
+  stt: {
+    mode: 'api', // api | local
+    format: 'cloudflare', // openai | cloudflare
+    baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run',
+    accountId: '',
+    model: '@cf/deepgram/nova-3',
+    language: 'ru',
+  },
   localSttModel: 'base',
   autoAnswer: true,
   listen: true,
@@ -187,7 +202,7 @@ function loadSettings() {
     // Mistral закрыл API на бесплатном плане — уводим таких пользователей на Cloudflare.
     if (settings.provider === 'mistral' && !settings.keys.mistral) {
       settings.provider = 'cloudflare';
-      settings.model = DEFAULT_SETTINGS.model;
+      settings.model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
     }
     if (settings.provider === 'cloudflare' && !settings.model) {
       settings.model = DEFAULT_SETTINGS.model;
@@ -199,8 +214,63 @@ function loadSettings() {
 
     settings.cloudflareAccount = normalizeAccountId(settings.cloudflareAccount);
 
-    // Старый файл с ключами в открытом виде — пересохраняем в зашифрованном.
-    if (legacyKeys) persist();
+    // Миграция на свои подключения: старые provider/model → адрес, ключ, модель.
+    if (!parsed.ai) {
+      const oldProvider = String(settings.provider || 'opencode');
+      const info = providerConfig(oldProvider);
+      const accountId = normalizeAccountId(settings.cloudflareAccount || '');
+
+      settings.ai = {
+        baseUrl: String(info.baseUrl || '').replace('{accountId}', accountId),
+        accountId: info.needsAccount ? accountId : '',
+        model: String(settings.model || info.defaultModel || ''),
+      };
+
+      if (!settings.keys.ai) {
+        settings.keys.ai = settings.keys[oldProvider] || '';
+      }
+    }
+
+    if (!parsed.stt) {
+      const oldStt = String(settings.sttProvider || 'cloudflare');
+      const accountId = normalizeAccountId(settings.cloudflareAccount || '');
+
+      if (oldStt === 'local') {
+        settings.stt = {
+          mode: 'local',
+          format: 'openai',
+          baseUrl: '',
+          accountId: '',
+          model: '',
+          language: 'ru',
+        };
+      } else {
+        const cloudflare = oldStt === 'cloudflare';
+
+        settings.stt = {
+          mode: 'api',
+          format: cloudflare ? 'cloudflare' : 'openai',
+          baseUrl: cloudflare
+            ? `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`
+            : 'https://api.mistral.ai/v1',
+          accountId: cloudflare ? accountId : '',
+          model: String(
+            settings.sttModel || (cloudflare ? '@cf/deepgram/nova-3' : 'voxtral-mini-latest')
+          ),
+          language: 'ru',
+        };
+
+        if (!settings.keys.stt) {
+          settings.keys.stt = settings.keys[oldStt] || '';
+        }
+      }
+    }
+
+    settings.ai = { ...DEFAULT_SETTINGS.ai, ...(settings.ai || {}) };
+    settings.stt = { ...DEFAULT_SETTINGS.stt, ...(settings.stt || {}) };
+
+    // Старый файл с ключами в открытом виде или без новых полей — пересохраняем.
+    if (legacyKeys || !parsed.ai || !parsed.stt) persist();
   } catch {
     settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   }
@@ -224,14 +294,24 @@ function persist() {
   }
 }
 
-/** Не хватает ключа или Account ID — нужно показать настройки. */
+/** Не хватает адреса или модели — нужно показать настройки. */
 function needsSetup() {
   if (settings.cloudMode && account && account.status().loggedIn) return false;
 
-  const provider = providerConfig(settings.provider);
-  if (!provider.noKey && !(settings.keys && settings.keys[settings.provider])) return true;
-  if (provider.needsAccount && !settings.cloudflareAccount) return true;
-  return false;
+  const ai = aiConfig();
+  return !ai.baseUrl || !ai.model;
+}
+
+/** Своё подключение к модели: адрес, ключ, модель, Account ID. */
+function aiConfig() {
+  const ai = settings.ai || {};
+
+  return {
+    baseUrl: String(ai.baseUrl || '').trim(),
+    accountId: String(ai.accountId || '').trim(),
+    model: String(ai.model || '').trim(),
+    apiKey: (settings.keys && settings.keys.ai) || '',
+  };
 }
 
 /**
@@ -1445,21 +1525,19 @@ function registerIpc() {
   ipcMain.handle('providers:get', () => PROVIDERS);
 
   ipcMain.handle('llm:test', async () => {
-    const providerId = settings.provider || 'cloudflare';
-    const provider = providerConfig(providerId);
-    const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
-    const accountId = settings.cloudflareAccount || '';
+    const ai = aiConfig();
 
-    if (!provider.noKey && !apiKey) return { ok: false, error: 'Не заполнен API-ключ' };
-    if (provider.needsAccount && !accountId) return { ok: false, error: 'Не заполнен Account ID' };
+    if (!ai.baseUrl) return { ok: false, error: 'Не указан адрес API модели' };
+    if (!ai.model) return { ok: false, error: 'Не указана модель' };
 
     try {
       let text = '';
       await streamChat({
-        providerId,
-        apiKey,
-        accountId,
-        model: settings.model,
+        providerId: 'custom',
+        baseUrl: ai.baseUrl,
+        accountId: ai.accountId,
+        model: ai.model,
+        apiKey: ai.apiKey,
         messages: [{ role: 'user', content: 'Ответь одним словом: работает' }],
         maxTokens: 300,
         temperature: 0,
@@ -1509,19 +1587,16 @@ function registerIpc() {
       }
     }
 
-    const providerId = settings.provider || 'cloudflare';
-    const provider = providerConfig(providerId);
-    const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
-    const accountId = settings.cloudflareAccount || '';
+    const ai = aiConfig();
 
-    if (!provider.noKey && !apiKey) {
-      const message = `Нет ключа для ${provider.label}. Откройте настройки.`;
+    if (!ai.baseUrl) {
+      const message = 'Не указан адрес API модели. Откройте настройки.';
       sendToOverlay('llm:error', message);
       return { ok: false, error: message };
     }
 
-    if (provider.needsAccount && !accountId) {
-      const message = 'Не указан Account ID Cloudflare. Откройте настройки.';
+    if (!ai.model) {
+      const message = 'Не указана модель. Откройте настройки.';
       sendToOverlay('llm:error', message);
       return { ok: false, error: message };
     }
@@ -1537,10 +1612,11 @@ function registerIpc() {
         let received = false;
         try {
           await streamChat({
-            providerId,
-            apiKey,
-            accountId,
-            model: settings.model,
+            providerId: 'custom',
+            baseUrl: ai.baseUrl,
+            accountId: ai.accountId,
+            model: ai.model,
+            apiKey: ai.apiKey,
             messages: buildMessages({ question, settings }),
             maxTokens: 400,
             temperature: 0.4,
@@ -1614,9 +1690,9 @@ function registerIpc() {
 
     // Запись встреч может попросить конкретный движок, не меняя настройки суфлёра.
     const override = payload && payload.override;
-    if (override && override.provider === 'local') {
+    if (override && (override.provider === 'local' || override.mode === 'local')) {
       try {
-        const text = await localStt.transcribe(audio, override.model);
+        const text = await localStt.transcribe(audio, settings.localSttModel);
         return { ok: true, text, model: 'local' };
       } catch (err) {
         if (err.name === 'AbortError') return { ok: false, aborted: true };
@@ -1632,6 +1708,10 @@ function registerIpc() {
         const result = await account.transcribe(audio, kind, settings.language);
 
         if (result && result.ok) {
+          sendToOverlay('cloud:usage', {
+            balanceKopecks: result.balanceKopecks,
+            trialSecondsLeft: result.trialSecondsLeft,
+          });
           return { ok: true, text: result.text, model: 'cloud' };
         }
 
@@ -1647,30 +1727,40 @@ function registerIpc() {
     sttAbort = controller;
 
     try {
-      if (override && override.model) {
-        return await cloudTranscribe(audio, controller, override.model);
-      }
+      const stt = settings.stt || {};
+      const sttMode = (override && override.mode) || stt.mode;
 
-      if (settings.sttProvider === 'local') {
+      if (sttMode === 'local') {
         try {
           const text = await localStt.transcribe(audio, settings.localSttModel);
           return { ok: true, text, model: 'local' };
         } catch (err) {
           if (err.name === 'AbortError') return { ok: false, aborted: true };
+
           console.warn('[stt] локальное распознавание не сработало:', err.message);
           sendToOverlay(
             'stt:notice',
-            'Локальное распознавание не сработало — слушаю через облако'
-          );
-          return await cloudTranscribe(
-            audio,
-            controller,
-            '@cf/openai/whisper-large-v3-turbo'
+            'Локальное распознавание не сработало — слушаю через API из настроек'
           );
         }
       }
 
-      return await cloudTranscribe(audio, controller, sttActiveModel || settings.sttModel);
+      const text = await transcribe({
+        providerId: 'custom',
+        format: stt.format,
+        baseUrl: stt.baseUrl,
+        accountId: stt.accountId,
+        apiKey: (settings.keys && settings.keys.stt) || '',
+        model: stt.model,
+        language: stt.language || settings.language || 'ru',
+        audio,
+        signal: controller.signal,
+      });
+
+      return { ok: true, text, model: stt.model || 'custom' };
+    } catch (err) {
+      if (err.name === 'AbortError') return { ok: false, aborted: true };
+      return { ok: false, error: err.message };
     } finally {
       if (sttAbort === controller) sttAbort = null;
     }
@@ -1702,9 +1792,12 @@ function registerIpc() {
   // Проверка распознавания перед «боем»: короткий тихий фрагмент через тот же
   // путь, что и настоящие вопросы.
   ipcMain.handle('stt:test', async () => {
-    if (settings.sttProvider === 'local') {
+    const stt = settings.stt || {};
+
+    if (stt.mode === 'local') {
       const size = settings.localSttModel === 'small' ? 'small' : 'base';
       const started = Date.now();
+
       try {
         await localStt.transcribe(silentWav(400), size);
         return { ok: true, model: 'local', label: `Локально (${size})`, ms: Date.now() - started };
@@ -1713,31 +1806,30 @@ function registerIpc() {
       }
     }
 
-    const sttId = settings.sttProvider || 'cloudflare';
-    const cfg = sttConfig(sttId);
-    const keyId = cfg.keyProvider || sttId;
-    const apiKey = (settings.keys && settings.keys[keyId]) || '';
-    if (!apiKey) return { ok: false, error: 'Нет ключа для распознавания' };
+    const started = Date.now();
 
-    const models = [sttActiveModel || settings.sttModel];
-    if (STT_FALLBACK[models[0]]) models.push(STT_FALLBACK[models[0]]);
+    try {
+      await transcribe({
+        providerId: 'custom',
+        format: stt.format,
+        baseUrl: stt.baseUrl,
+        accountId: stt.accountId,
+        apiKey: (settings.keys && settings.keys.stt) || '',
+        model: stt.model,
+        language: stt.language || 'ru',
+        audio: silentWav(400),
+        signal: AbortSignal.timeout(15000),
+      });
 
-    const results = [];
-    for (const model of models) {
-      const started = Date.now();
-      try {
-        await runStt(model, silentWav(400), AbortSignal.timeout(15000));
-        results.push({ model, ms: Date.now() - started, ok: true });
-        break;
-      } catch (err) {
-        results.push({ model, ms: Date.now() - started, ok: false, error: err.message });
-      }
+      return {
+        ok: true,
+        model: stt.model || 'custom',
+        label: stt.model || 'Свой API',
+        ms: Date.now() - started,
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
     }
-
-    const working = results.find((item) => item.ok);
-    return working
-      ? { ok: true, model: working.model, label: sttModelLabel(working.model), ms: working.ms, results }
-      : { ok: false, error: results[results.length - 1]?.error || 'Не удалось', results };
   });
 
   ipcMain.on('overlay:set-click-through', (_event, value) => {

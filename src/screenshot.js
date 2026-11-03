@@ -147,10 +147,11 @@ function createScreenshotService({
 
   async function solve(base64, controller, mode) {
     const settings = getSettings();
-    const providerId = settings.provider || 'cloudflare';
-    const provider = providerConfig(providerId);
-    const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
-    const model = visionModel(providerId, settings.model);
+    const ai = settings.ai || {};
+    const baseUrl = String(ai.baseUrl || '').trim();
+    const accountId = String(ai.accountId || '').trim();
+    const model = String(ai.model || '').trim();
+    const apiKey = (settings.keys && settings.keys.ai) || '';
     const variant = VISION_MODES[mode] || VISION_MODES.solve;
 
     const messages = [
@@ -177,15 +178,14 @@ function createScreenshotService({
       }
     }
 
-    if (!provider.noKey && !apiKey) throw new Error('Нет ключа для модели');
-    if (provider.needsAccount && !settings.cloudflareAccount) {
-      throw new Error('Не указан Account ID Cloudflare');
-    }
+    if (!baseUrl) throw new Error('Не указан адрес API модели');
+    if (!model) throw new Error('Не указана модель');
 
     await streamChat({
-      providerId,
+      providerId: 'custom',
+      baseUrl,
+      accountId,
       apiKey,
-      accountId: settings.cloudflareAccount || '',
       model,
       messages,
       maxTokens: 900,

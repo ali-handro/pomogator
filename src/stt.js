@@ -4,12 +4,15 @@ const { net } = require('electron');
 
 /**
  * Распознавание речи.
- * cloudflare — Whisper large-v3-turbo на Workers AI: тот же токен и аккаунт,
- * что и для ответов, отдельная регистрация не нужна.
+ *
+ * cloudflare — Workers AI (Nova-3 / Whisper), нужен Account ID.
+ * custom     — свой endpoint: OpenAI-совместимый (/audio/transcriptions)
+ *              или Cloudflare-совместимый (/ai/run/<model>).
  */
+
 const STT = {
   cloudflare: {
-    label: 'Cloudflare Whisper',
+    label: 'Cloudflare Workers AI',
     baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run',
     defaultModel: '@cf/deepgram/nova-3',
     models: [
@@ -27,10 +30,17 @@ const STT = {
     models: ['voxtral-mini-latest', 'voxtral-small-latest'],
     keyProvider: 'mistral',
   },
+  custom: {
+    label: 'Свой API',
+    baseUrl: '',
+    defaultModel: '',
+    models: [],
+    needsAccount: false,
+  },
 };
 
 function sttConfig(id) {
-  return STT[id] || STT.cloudflare;
+  return STT[id] || STT.custom;
 }
 
 function toBase64(arrayBuffer) {
@@ -38,24 +48,30 @@ function toBase64(arrayBuffer) {
 }
 
 async function transcribe(options) {
-  const { providerId, model } = options;
+  const { providerId, model, format } = options;
   const chosen = model || sttConfig(providerId).defaultModel;
 
   try {
     return await transcribeOnce({ ...options, model: chosen });
   } catch (err) {
-    // Nova может быть недоступна на аккаунте — тогда молча уходим на Whisper,
-    // чтобы суфлёр не остался без распознавания.
-    if (providerId === 'cloudflare' && /^@cf\/deepgram\//.test(chosen)) {
+    const nova = /^@cf\/deepgram\//.test(chosen);
+    const cloudflare =
+      providerId === 'cloudflare' || (providerId === 'custom' && format === 'cloudflare');
+
+    // Nova может быть недоступна — молча уходим на Whisper.
+    if (cloudflare && nova) {
       console.warn('[stt] nova failed:', err.message);
       return transcribeOnce({ ...options, model: '@cf/openai/whisper-large-v3-turbo' });
     }
+
     throw err;
   }
 }
 
 async function transcribeOnce({
   providerId,
+  format,
+  baseUrl,
   apiKey,
   accountId,
   model,
@@ -66,51 +82,52 @@ async function transcribeOnce({
 }) {
   const cfg = sttConfig(providerId);
   const chosen = model || cfg.defaultModel;
-  // Deepgram в Workers AI принимает сам файл телом запроса и параметры в URL,
-  // а Whisper — base64 внутри JSON.
-  const deepgram = providerId === 'cloudflare' && /^@cf\/deepgram\//.test(chosen);
-  // Whisper принимает подсказку ограниченной длины — обрезаем,
-  // чтобы контекст разговора помогал, но не ломал запрос.
+  const cloudflareFormat =
+    providerId === 'custom' ? format === 'cloudflare' : providerId === 'cloudflare';
+
+  const rawBase = String(baseUrl || cfg.baseUrl || '');
+  const account = String(accountId || '').trim();
+
+  if (rawBase.includes('{accountId}') && !account) {
+    throw new Error('Укажите Account ID');
+  }
+
+  const base = rawBase.replace('{accountId}', account).replace(/\/+$/, '');
+
+  if (!base) throw new Error('Не указан адрес API распознавания');
+  if (cfg.needsAccount && !account) throw new Error('Укажите Account ID');
+
+  const deepgram = cloudflareFormat && /^@cf\/deepgram\//.test(chosen);
   const hint = String(initialPrompt || '').trim().slice(0, 700);
 
-  if (!apiKey) throw new Error('Нет ключа для распознавания речи');
-  if (cfg.needsAccount && !accountId) throw new Error('Не указан Account ID Cloudflare');
-
-  const base = cfg.baseUrl.replace('{accountId}', String(accountId || '').trim());
-  const url = deepgram
-    ? `${base}/${chosen}?language=${language}&smart_format=true&punctuate=true`
-    : `${base}/${chosen}`;
-
-  // Зависший запрос не должен держать очередь распознавания: через 12 секунд
-  // считаем, что сервис не ответил, и уходим на резервную модель.
   const timeout = AbortSignal.timeout(12000);
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
+  const headers = {};
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
   let res;
-  if (providerId === 'cloudflare') {
+
+  if (cloudflareFormat) {
+    const url = deepgram
+      ? `${base}/${chosen}?language=${language}&smart_format=true&punctuate=true`
+      : `${base}/${chosen}`;
+
     if (deepgram) {
       res = await net.fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'audio/wav',
-        },
+        headers: { ...headers, 'Content-Type': 'audio/wav' },
         body: audio,
         signal: requestSignal,
       });
     } else {
       res = await net.fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           audio: toBase64(audio),
           language,
           task: 'transcribe',
-          // Свой VAD уже есть в рендерере: лишняя проверка на стороне Whisper
-          // только добавляет задержку перед ответом.
           ...(hint ? { initial_prompt: hint } : {}),
         }),
         signal: requestSignal,
@@ -124,9 +141,9 @@ async function transcribeOnce({
     form.append('temperature', '0');
     form.append('file', new Blob([audio], { type: 'audio/wav' }), 'chunk.wav');
 
-    res = await net.fetch(`${cfg.baseUrl}/audio/transcriptions`, {
+    res = await net.fetch(`${base}/audio/transcriptions`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers,
       body: form,
       signal: requestSignal,
     });
@@ -135,6 +152,7 @@ async function transcribeOnce({
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     let detail = text.slice(0, 240);
+
     try {
       const parsed = JSON.parse(text);
       detail =
@@ -146,6 +164,7 @@ async function transcribeOnce({
     } catch {
       /* оставляем как есть */
     }
+
     const error = new Error(`Распознавание: HTTP ${res.status} — ${detail}`);
     error.status = res.status;
     error.retryAfter = Number(res.headers.get('retry-after')) || 0;
@@ -153,9 +172,13 @@ async function transcribeOnce({
   }
 
   const data = await res.json().catch(() => null);
-  const text = deepgram
-    ? data?.result?.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
-    : (data && (data.result?.text ?? data.text ?? data.transcription)) || '';
+
+  const text = cloudflareFormat
+    ? deepgram
+      ? data?.result?.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
+      : (data && (data.result?.text ?? data.text ?? data.transcription)) || ''
+    : (data && (data.text ?? data.transcription ?? data.result?.text)) || '';
+
   return String(text).trim();
 }
 

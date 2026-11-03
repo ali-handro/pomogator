@@ -70,6 +70,13 @@ const PROVIDERS = {
     keyUrl: 'https://opencode.ai/console',
     note: 'Подписка OpenCode Go: ключ из консоли. Быстрее всех — GLM-5.3-Flash',
   },
+  custom: {
+    label: 'Свой сервер',
+    baseUrl: '',
+    defaultModel: '',
+    models: [],
+    note: 'OpenAI-совместимый адрес. Сервер, ключ и модель задаёте сами.',
+  },
 };
 
 function providerConfig(id) {
@@ -185,6 +192,7 @@ function extraHeaders(providerId) {
 
 async function streamChat({
   providerId,
+  baseUrl,
   model,
   apiKey,
   accountId,
@@ -196,9 +204,22 @@ async function streamChat({
 }) {
   const provider = providerConfig(providerId);
   const modelId = model || provider.defaultModel;
+
+  const resolvedBase = baseUrl
+    ? String(baseUrl)
+        .replace('{accountId}', String(accountId || '').trim())
+        .replace(/\/+$/, '')
+    : resolveBaseUrl(provider, accountId);
+
   const headers = { 'Content-Type': 'application/json' };
   if (!provider.noKey && apiKey) headers.Authorization = `Bearer ${apiKey}`;
   Object.assign(headers, extraHeaders(providerId) || {});
+
+  // OpenCode требует стабильный id сессии даже при своём адресе.
+  if (/opencode\.ai/i.test(resolvedBase)) {
+    headers['User-Agent'] = 'Pomogator/0.1.0 (overlay assistant)';
+    headers['x-opencode-session'] = OPENCODE_SESSION_ID;
+  }
 
   const tweaks = reasoningTweaks(providerId, modelId);
   const outputLimit = outputTokenLimit(modelId, maxTokens);
@@ -212,7 +233,7 @@ async function streamChat({
     ...(tweaks || {}),
   };
 
-  const res = await net.fetch(`${resolveBaseUrl(provider, accountId)}/chat/completions`, {
+  const res = await net.fetch(`${resolvedBase}/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),

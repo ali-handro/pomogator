@@ -70,50 +70,65 @@
         </section>
 
         <section class="card" id="connectionCard">
-          <h2>Подключение</h2>
+          <h2>Модель</h2>
 
           <label class="field">
-            <span class="label">Провайдер</span>
-            <select id="provider"></select>
-            <span class="hint" id="providerNote"></span>
-          </label>
-
-          <label class="field" id="accountField" hidden>
-            <span class="label">
-              Account ID
-              <a href="#" id="accountHelp" class="link">где взять →</a>
-            </span>
+            <span class="label">Адрес API</span>
             <input
               type="text"
-              id="cloudflareAccount"
-              placeholder="ID аккаунта Cloudflare"
+              id="aiBaseUrl"
+              placeholder="https://opencode.ai/inference/go/openai/v1"
               spellcheck="false"
               autocomplete="off"
             />
-            <span class="hint">Cloudflare → Workers AI: ID аккаунта показан справа и в адресе панели.</span>
+            <span class="hint">
+              OpenAI-совместимый адрес. Для локальной модели — например
+              http://127.0.0.1:11434/v1 (Ollama) или http://127.0.0.1:1234/v1 (LM Studio).
+            </span>
           </label>
 
           <label class="field">
             <span class="label">
               API-ключ
-              <a href="#" id="getKey" class="link">получить ключ →</a>
+              <span class="value">можно оставить пустым для локальной</span>
             </span>
             <span class="input-row">
               <input
                 type="password"
-                id="apiKey"
-                placeholder="вставьте ключ"
+                id="aiKey"
+                placeholder="ключ провайдера"
                 spellcheck="false"
                 autocomplete="off"
               />
-              <button type="button" class="ghost" id="toggleKey" title="Показать">👁</button>
+              <button type="button" class="ghost" id="toggleAiKey" title="Показать">👁</button>
             </span>
-            <span class="hint">Хранится только на этом компьютере, в файле настроек.</span>
+            <span class="hint">Хранится зашифрованным на этом компьютере.</span>
+          </label>
+
+          <label class="field">
+            <span class="label">Account ID</span>
+            <input
+              type="text"
+              id="aiAccountId"
+              placeholder="нужен для Cloudflare, иначе оставьте пустым"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <span class="hint">
+              Подставляется вместо <code>{accountId}</code> в адресе. Например, у Cloudflare:
+              https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1
+            </span>
           </label>
 
           <label class="field">
             <span class="label">Модель</span>
-            <select id="model"></select>
+            <input
+              type="text"
+              id="aiModel"
+              placeholder="glm-5.3-flash"
+              spellcheck="false"
+              autocomplete="off"
+            />
           </label>
 
           <div class="test-row">
@@ -190,23 +205,77 @@
 
           <label class="field">
             <span class="label">Распознавание речи</span>
-            <select id="sttSource">
-              <option value="cloudflare">Облако Cloudflare — быстро, нужен интернет</option>
-              <option value="local">Локально (whisper.cpp) — без интернета и квот</option>
+            <select id="sttMode">
+              <option value="api">По API — нужен интернет</option>
+              <option value="local">Локально (whisper.cpp) — без интернета</option>
             </select>
           </label>
 
-          <label class="field" id="sttCloudBlock">
-            <span class="label">Модель в облаке</span>
-            <select id="sttModel">
-              <option value="@cf/deepgram/nova-3">Deepgram Nova — самый быстрый</option>
-              <option value="@cf/openai/whisper-large-v3-turbo">Whisper — экономнее по квоте</option>
-            </select>
-            <span class="hint">
-              Nova отвечает в 5–6 раз быстрее, но тратит заметно больше нейронов Cloudflare.
-              Whisper медленнее, зато расходует квоту в 10 раз меньше.
-            </span>
-          </label>
+          <div id="sttApiBlock">
+            <label class="field">
+              <span class="label">Формат API</span>
+              <select id="sttFormat">
+                <option value="openai">OpenAI-совместимый (/audio/transcriptions)</option>
+                <option value="cloudflare">Cloudflare Workers AI (/ai/run)</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="label">Адрес API</span>
+              <input
+                type="text"
+                id="sttBaseUrl"
+                placeholder="https://api.groq.com/openai/v1"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+
+            <label class="field">
+              <span class="label">Account ID</span>
+              <input
+                type="text"
+                id="sttAccountId"
+                placeholder="для Cloudflare, иначе пусто"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+
+            <label class="field">
+              <span class="label">API-ключ</span>
+              <span class="input-row">
+                <input
+                  type="password"
+                  id="sttKey"
+                  placeholder="ключ провайдера"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+                <button type="button" class="ghost" id="toggleSttKey" title="Показать">👁</button>
+              </span>
+            </label>
+
+            <label class="field">
+              <span class="label">Модель</span>
+              <input
+                type="text"
+                id="sttModelInput"
+                placeholder="@cf/deepgram/nova-3"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+
+            <label class="field">
+              <span class="label">Язык</span>
+              <select id="sttLanguage">
+                <option value="ru">Русский</option>
+                <option value="en">Английский</option>
+                <option value="auto">Авто</option>
+              </select>
+            </label>
+          </div>
 
           <div id="sttLocalBlock" hidden>
             <label class="field">
