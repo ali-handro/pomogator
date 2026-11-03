@@ -106,7 +106,7 @@ async function transcribeOnce({
   const deepgram = cloudflareFormat && /^@cf\/deepgram\//.test(chosen);
   const hint = String(initialPrompt || '').trim().slice(0, 700);
 
-  const timeout = AbortSignal.timeout(12000);
+  const timeout = AbortSignal.timeout(20000);
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
   const headers = {};
