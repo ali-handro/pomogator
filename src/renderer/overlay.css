@@ -355,7 +355,7 @@ body.browsing .hist-count {
 .answer-text {
   display: none;
   width: 100%;
-  max-height: calc(var(--answer-lines, 6) * 1.45em);
+  max-height: 100%;
   margin-block: auto;
   overflow-x: hidden;
   overflow-y: auto;

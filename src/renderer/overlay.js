@@ -1102,10 +1102,6 @@ function applySettings() {
   renderSourceButton();
   renderMicButton();
 
-  const height = Number(settings.overlayHeight) || 232;
-  const lines = Math.max(3, Math.min(14, Math.round((height - 120) / 26)));
-  document.documentElement.style.setProperty('--answer-lines', String(lines));
-
   el.keysHint.textContent = settings.clickThrough
     ? `${pauseHotkey()} — пауза · Ctrl+Shift+Space — скрыть`
     : `Клик-режим · Ctrl+Shift+E — выключить · ${pauseHotkey()} — пауза`;
