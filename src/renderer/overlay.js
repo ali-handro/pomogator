@@ -1048,9 +1048,8 @@ async function refreshCloudBalance() {
     }
 
     const minutes = Math.max(0, Math.floor(quote.remainingSeconds / 60));
-    const rub = Number(quote.balanceRub || 0).toFixed(2);
 
-    box.textContent = `облако: ${minutes} мин · ${rub} ₽`;
+    box.textContent = `облако: ${minutes} мин`;
     box.classList.toggle('low', minutes < 5);
     box.hidden = false;
     sep.hidden = false;

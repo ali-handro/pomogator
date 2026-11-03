@@ -156,8 +156,8 @@ function flush(channel) {
 }
 
 function engineOverride() {
-  const local = $('engine').value === 'local';
-  return { kind: 'meeting', mode: local ? 'local' : 'api' };
+  if ($('engine').value === 'local') return { kind: 'meeting', mode: 'local' };
+  return { kind: 'meeting' };
 }
 
 async function drain(channel) {
@@ -221,6 +221,62 @@ function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+async function refreshCloudMeta() {
+  const meta = $('cloudMeta');
+  if (!meta) return;
+
+  try {
+    const settings = await window.api.getSettings();
+
+    if (!settings.cloudMode) {
+      meta.hidden = true;
+      return;
+    }
+
+    const sttMode =
+      $('engine').value === 'local'
+        ? 'local'
+        : (settings.stt && settings.stt.mode) || 'api';
+
+    if (sttMode === 'local') {
+      $('cloudRate').textContent = 'Локальная запись';
+      $('cloudLeft').textContent = 'без списания минут';
+      $('cloudLeft').classList.remove('low');
+      meta.hidden = false;
+      return;
+    }
+
+    if (sttMode !== 'cloud') {
+      $('cloudRate').textContent = 'Свой API';
+      $('cloudLeft').textContent = 'без списания минут';
+      $('cloudLeft').classList.remove('low');
+      meta.hidden = false;
+      return;
+    }
+
+    const quote = await window.api.accountQuote('meeting');
+
+    if (!quote || !quote.ok) {
+      meta.hidden = true;
+      return;
+    }
+
+    const minutes = Math.max(0, Math.floor(quote.remainingSeconds / 60));
+    const perMinute = (Number(quote.ratePerHourRub || 0) / 60)
+      .toFixed(2)
+      .replace(/\.?0+$/, '')
+      .replace('.', ',');
+
+    $('cloudRate').textContent =
+      `Встреча: ${quote.ratePerHourRub} ₽/час (${perMinute} ₽/мин)`;
+    $('cloudLeft').textContent = `осталось ${minutes} мин · ${quote.balanceRub} ₽`;
+    $('cloudLeft').classList.toggle('low', minutes < 5);
+    meta.hidden = false;
+  } catch {
+    meta.hidden = true;
+  }
 }
 
 function renderEntry(entry) {
@@ -452,6 +508,8 @@ async function stop() {
   } else {
     setStatus('Речь не распознана');
   }
+
+  refreshCloudMeta();
 
   $('btnExport').disabled = state.entries.length === 0;
   $('btnClear').disabled = state.entries.length === 0;
@@ -686,6 +744,12 @@ function boot() {
     $('recordsPanel').hidden = true;
   });
   $('recordsSearch').addEventListener('input', renderRecords);
+
+  $('engine').addEventListener('change', refreshCloudMeta);
+  enhanceSelects();
+  syncAllSelects();
+  refreshCloudMeta();
+  setInterval(refreshCloudMeta, 60000);
 
   window.addEventListener('beforeunload', () => {
     if (state.running) {

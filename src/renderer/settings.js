@@ -468,15 +468,38 @@ function renderAccountState() {
 
 async function refreshCloudQuote() {
   const hint = $('cloudHint');
+  const price = $('priceLine');
   if (!hint || !hasApi || !window.api.accountQuote) return;
 
   const wallet = accountState && accountState.profile && accountState.profile.wallet;
+
+  const setPrice = (interviewRate, meetingRate) => {
+    if (!price) return;
+
+    if (!settings.cloudMode) {
+      price.hidden = true;
+      return;
+    }
+
+    const perMinute = (rate) =>
+      (Number(rate || 0) / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+
+    price.textContent =
+      `Тариф: собеседование ${interviewRate} ₽/час (${perMinute(interviewRate)} ₽/мин)` +
+      ` · встречи ${meetingRate} ₽/час (${perMinute(meetingRate)} ₽/мин)`;
+    price.hidden = false;
+  };
 
   try {
     const [interview, meeting] = await Promise.all([
       window.api.accountQuote('interview'),
       window.api.accountQuote('meeting'),
     ]);
+
+    const interviewRate = interview && interview.ok ? interview.ratePerHourRub : 449;
+    const meetingRate = meeting && meeting.ok ? meeting.ratePerHourRub : 150;
+
+    setPrice(interviewRate, meetingRate);
 
     if (interview && interview.ok && meeting && meeting.ok) {
       hint.textContent =
@@ -485,7 +508,7 @@ async function refreshCloudQuote() {
       return;
     }
   } catch {
-    /* ниже показываем кэш */
+    setPrice(449, 150);
   }
 
   if (wallet) {
@@ -553,10 +576,18 @@ function fill() {
 
 function renderStt() {
   const stt = settings.stt || {};
-  const local = stt.mode === 'local';
-  const cloud = !!settings.cloudMode && !!(accountState && accountState.loggedIn);
+  const cloudAvailable = !!settings.cloudMode && !!(accountState && accountState.loggedIn);
 
-  if ($('sttMode')) $('sttMode').value = local ? 'local' : 'api';
+  let mode = stt.mode === 'local' ? 'local' : stt.mode === 'cloud' ? 'cloud' : 'api';
+  if (mode === 'cloud' && !cloudAvailable) mode = 'api';
+
+  const select = $('sttMode');
+  if (select) {
+    const cloudOption = Array.from(select.options).find((option) => option.value === 'cloud');
+    if (cloudOption) cloudOption.disabled = !cloudAvailable;
+  }
+  if (select) select.value = mode;
+
   if ($('sttFormat')) $('sttFormat').value = stt.format === 'cloudflare' ? 'cloudflare' : 'openai';
   if ($('sttBaseUrl')) $('sttBaseUrl').value = stt.baseUrl || '';
   if ($('sttAccountId')) $('sttAccountId').value = stt.accountId || '';
@@ -565,7 +596,10 @@ function renderStt() {
   if ($('sttLanguage')) $('sttLanguage').value = stt.language || 'ru';
 
   const modeField = $('sttModeField');
-  if (modeField) modeField.hidden = cloud;
+  if (modeField) modeField.hidden = false;
+
+  const cloud = mode === 'cloud';
+  const local = mode === 'local';
 
   const note = $('sttCloudNote');
   if (note) note.hidden = !cloud;
@@ -587,7 +621,7 @@ function renderStt() {
 
   syncAllSelects();
 
-  if (local && !cloud) refreshLocalStatus();
+  if (local) refreshLocalStatus();
 }
 
 async function refreshLocalStatus() {
@@ -695,9 +729,10 @@ function bind() {
   });
 
   $('sttMode').addEventListener('change', () => {
+    const value = $('sttMode').value;
     settings.stt = {
       ...(settings.stt || {}),
-      mode: $('sttMode').value === 'local' ? 'local' : 'api',
+      mode: value === 'local' ? 'local' : value === 'cloud' ? 'cloud' : 'api',
     };
     renderStt();
     scheduleSave();
@@ -941,105 +976,6 @@ function bind() {
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !capturingHotkey) window.close();
-  });
-}
-
-/* ---------- свои выпадающие списки ---------- */
-
-const selectBindings = new WeakMap();
-
-function syncSelect(select) {
-  const binding = selectBindings.get(select);
-  if (!binding) return;
-
-  const option = select.options[select.selectedIndex];
-  binding.label.textContent = option ? option.textContent : '';
-}
-
-function syncAllSelects() {
-  document.querySelectorAll('select').forEach(syncSelect);
-}
-
-function enhanceSelects() {
-  document.querySelectorAll('select').forEach((select) => {
-    if (selectBindings.has(select)) return;
-
-    const wrap = document.createElement('div');
-    wrap.className = 'select';
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'select-button';
-
-    const label = document.createElement('span');
-    label.className = 'select-label';
-
-    const chevron = document.createElement('span');
-    chevron.className = 'select-chevron';
-    chevron.textContent = '▾';
-
-    button.append(label, chevron);
-
-    const menu = document.createElement('div');
-    menu.className = 'select-menu';
-    menu.hidden = true;
-
-    select.parentNode.insertBefore(wrap, select);
-    wrap.append(select, button, menu);
-    select.classList.add('select-native');
-
-    const binding = { label, menu, button };
-    selectBindings.set(select, binding);
-
-    const renderMenu = () => {
-      menu.innerHTML = '';
-
-      for (const option of select.options) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'select-option';
-        item.textContent = option.textContent;
-        if (option.value === select.value) item.classList.add('active');
-
-        item.addEventListener('click', () => {
-          select.value = option.value;
-          select.dispatchEvent(new Event('change', { bubbles: true }));
-          close();
-        });
-
-        menu.appendChild(item);
-      }
-    };
-
-    const close = () => {
-      menu.hidden = true;
-      button.classList.remove('open');
-    };
-
-    const open = () => {
-      document.querySelectorAll('.select-menu').forEach((other) => {
-        if (other !== menu) other.hidden = true;
-      });
-
-      renderMenu();
-      menu.hidden = false;
-      button.classList.add('open');
-    };
-
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      if (menu.hidden) open();
-      else close();
-    });
-
-    menu.addEventListener('click', (event) => event.stopPropagation());
-
-    document.addEventListener('click', close);
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') close();
-    });
-
-    syncSelect(select);
   });
 }
 

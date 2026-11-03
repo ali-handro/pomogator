@@ -1700,8 +1700,14 @@ function registerIpc() {
       }
     }
 
-    // Облако Помогатора: распознавание идёт через наш сервер и списывает минуты.
-    if (settings.cloudMode && account && account.status().loggedIn) {
+    const sttSettings = settings.stt || {};
+    const cloudReady = !!settings.cloudMode && !!account && account.status().loggedIn;
+
+    let mode = sttSettings.mode === 'local' ? 'local' : sttSettings.mode === 'cloud' ? 'cloud' : 'api';
+    if (mode === 'cloud' && !cloudReady) mode = 'api';
+
+    // Облако Помогатора: только если в настройках выбран режим «через облако».
+    if (mode === 'cloud') {
       const kind = override && override.kind === 'meeting' ? 'meeting' : 'interview';
 
       try {
@@ -1728,7 +1734,7 @@ function registerIpc() {
 
     try {
       const stt = settings.stt || {};
-      const sttMode = (override && override.mode) || stt.mode;
+      const sttMode = mode;
 
       if (sttMode === 'local') {
         try {

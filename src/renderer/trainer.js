@@ -105,6 +105,9 @@ function boot() {
     select.appendChild(option);
   }
 
+  enhanceSelects();
+  syncAllSelects();
+
   select.addEventListener('change', () => loadCategory(select.value));
 
   $('btnStart').addEventListener('click', startTimer);

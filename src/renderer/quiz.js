@@ -21,15 +21,33 @@ function shuffle(list) {
 
 /** Большие банки QA и Java подключаются отдельными файлами. */
 function getCategories() {
-  const base = (window.QUIZ_CATEGORIES || []).filter(
-    (item) => item.id !== 'qa' && item.id !== 'java'
-  );
-
   const big = [];
-  if (window.QUIZ_QA) big.push({ id: 'qa', label: 'Тестировщик (QA)', questions: window.QUIZ_QA });
-  if (window.QUIZ_JAVA) big.push({ id: 'java', label: 'Java', questions: window.QUIZ_JAVA });
 
-  return [...big, ...base];
+  if (window.QUIZ_QA) {
+    big.push({ id: 'qa', label: 'Тестировщик (QA)', questions: window.QUIZ_QA });
+  }
+  if (window.QUIZ_JAVA) {
+    big.push({ id: 'java', label: 'Java', questions: window.QUIZ_JAVA });
+  }
+  if (window.QUIZ_MOBILE) {
+    big.push({ id: 'mobile', label: 'Тестирование mobile', questions: window.QUIZ_MOBILE });
+  }
+
+  const banks = {
+    python: window.QUIZ_PYTHON,
+    frontend: window.QUIZ_FRONTEND,
+    sql: window.QUIZ_SQL,
+    devops: window.QUIZ_DEVOPS,
+  };
+
+  const rest = (window.QUIZ_CATEGORIES || [])
+    .filter((item) => item.id !== 'qa' && item.id !== 'java')
+    .map((item) => {
+      const bank = banks[item.id];
+      return bank ? { ...item, questions: bank } : item;
+    });
+
+  return [...big, ...rest];
 }
 
 function loadCategory(id) {
@@ -144,6 +162,9 @@ function boot() {
     option.textContent = category.label;
     select.appendChild(option);
   }
+
+  enhanceSelects();
+  syncAllSelects();
 
   select.addEventListener('change', () => loadCategory(select.value));
   $('btnNext').addEventListener('click', next);

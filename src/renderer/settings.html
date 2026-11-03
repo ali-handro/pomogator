@@ -8,6 +8,7 @@
     />
     <title>Помогатор — настройки</title>
     <link rel="stylesheet" href="settings.css" />
+    <link rel="stylesheet" href="select.css" />
   </head>
   <body>
     <div class="shell">
@@ -64,6 +65,7 @@
               <span>Работать через облако Помогатора</span>
             </label>
             <span class="hint" id="cloudHint"></span>
+            <div class="price-line" id="priceLine" hidden></div>
 
             <div class="devices" id="accountDevices"></div>
           </div>
@@ -206,6 +208,7 @@
           <label class="field" id="sttModeField">
             <span class="label">Распознавание речи</span>
             <select id="sttMode">
+              <option value="cloud">Через облако Помогатора</option>
               <option value="api">Свой API — ввести адрес и ключ</option>
               <option value="local">Локально (whisper.cpp) — без интернета</option>
             </select>
@@ -417,6 +420,7 @@
       </footer>
     </div>
 
+    <script src="select.js"></script>
     <script src="settings.js"></script>
   </body>
 </html>

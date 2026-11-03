@@ -1,0 +1,100 @@
+.select {
+  position: relative;
+  width: 100%;
+}
+
+.select-native {
+  display: none;
+}
+
+.select-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text, #e7eefb);
+  text-align: left;
+  cursor: pointer;
+  background: var(--panel-2, var(--card, #0f141d));
+  border: 1px solid var(--stroke, var(--line, rgba(255, 255, 255, 0.08)));
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.select-button:hover {
+  border-color: var(--stroke-2, rgba(255, 255, 255, 0.16));
+}
+
+.select-button.open {
+  border-color: rgba(110, 168, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(110, 168, 255, 0.12);
+}
+
+.select-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.select-chevron {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--dim, #6b7789);
+}
+
+.select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 60;
+  max-height: 280px;
+  padding: 6px;
+  overflow-y: auto;
+  background: #070b11;
+  border: 1px solid var(--stroke-2, var(--line, rgba(255, 255, 255, 0.12)));
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
+}
+
+.select-menu[hidden] {
+  display: none;
+}
+
+.select-option {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: #d6deee;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.select-option:hover {
+  color: var(--text, #e7eefb);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.select-option.active {
+  color: #fff;
+  background: rgba(110, 168, 255, 0.22);
+}
+
+.select-option.disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.select-option.disabled:hover {
+  background: transparent;
+}
