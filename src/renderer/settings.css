@@ -681,6 +681,130 @@ kbd {
   background-clip: padding-box;
 }
 
+/* ---------- поддержка и пополнение ---------- */
+
+.support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.support-card .hint {
+  display: block;
+  margin-top: 8px;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(4, 7, 12, 0.72);
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: min(480px, 100%);
+  padding: 18px 18px 16px;
+  background: var(--panel);
+  border: 1px solid var(--stroke-2);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.modal-head .test-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.modal-note {
+  margin-bottom: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.amount {
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  background: var(--panel-2);
+  border: 1px solid var(--stroke);
+  border-radius: 9px;
+}
+
+.amount:hover {
+  border-color: rgba(110, 168, 255, 0.45);
+}
+
+.amount.active {
+  color: #fff;
+  background: rgba(110, 168, 255, 0.22);
+  border-color: rgba(110, 168, 255, 0.6);
+}
+
+.topup-summary {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+}
+
+.topup-summary b {
+  color: var(--text);
+}
+
+.modal-pay {
+  width: 100%;
+  height: 38px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0b0f16;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: 0;
+  border-radius: 10px;
+}
+
+.modal-pay:hover {
+  filter: brightness(1.06);
+}
+
+.modal-card .hint {
+  display: block;
+  margin-top: 10px;
+}
+
 /* ---------- узкое окно ---------- */
 
 @media (max-width: 680px) {

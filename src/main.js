@@ -27,6 +27,7 @@ const { createHotkeys } = require('./hotkeys');
 const { createScreenshotService } = require('./screenshot');
 const { createMeetingStore } = require('./meeting-store');
 const { createAccount } = require('./account');
+const appConfig = require('./config');
 const { buildMessages } = require('./prompt');
 
 const APP_ROOT = path.join(__dirname, '..');
@@ -1521,6 +1522,9 @@ function registerIpc() {
     version: app.getVersion(),
     platform: process.platform,
     userData: app.getPath('userData'),
+    donateUrl: appConfig.donateUrl || '',
+    topupUrl: appConfig.topupUrl || '',
+    supportContact: appConfig.supportContact || '',
   }));
 
   ipcMain.handle('providers:get', () => PROVIDERS);

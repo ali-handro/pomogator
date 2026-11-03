@@ -56,7 +56,6 @@
                 <span class="plan-note" id="accountNote"></span>
               </div>
               <div class="account-actions">
-                <button type="button" class="ghost test-btn" id="accountTopup" hidden>Пополнить</button>
                 <button type="button" class="ghost test-btn" id="accountLogout">Выйти</button>
               </div>
             </div>
@@ -72,6 +71,23 @@
 
             <div class="devices" id="accountDevices"></div>
           </div>
+        </section>
+
+        <section class="card support-card">
+          <h2>Поддержать проект</h2>
+          <p class="account-lead">
+            Приложение бесплатное. Если оно помогает — можно отблагодарить разработку.
+            Это необязательно и не влияет на работу.
+          </p>
+          <div class="support-actions">
+            <button type="button" class="ghost test-btn" id="donateBtn" disabled>
+              Поддержать на Boosty
+            </button>
+            <button type="button" class="ghost test-btn" id="topupBtn">
+              Пополнить облако
+            </button>
+          </div>
+          <span class="hint" id="supportHint"></span>
         </section>
 
         <section class="card" id="connectionCard">
@@ -434,6 +450,27 @@
         <span class="saved" id="saved">Сохранено</span>
         <span class="foot-note">Изменения применяются сразу</span>
       </footer>
+    </div>
+
+    <div class="modal" id="topupModal" hidden>
+      <div class="modal-card">
+        <header class="modal-head">
+          <span>Пополнить облако</span>
+          <button type="button" class="ghost test-btn" id="topupClose" title="Закрыть">✕</button>
+        </header>
+
+        <p class="modal-note">
+          Сумма зачисляется на баланс. Минуты списываются по тарифу:
+          собеседование 449 ₽/час, встречи 150 ₽/час.
+        </p>
+
+        <div class="amounts" id="topupAmounts"></div>
+
+        <div class="topup-summary" id="topupSummary"></div>
+
+        <button type="button" class="primary modal-pay" id="topupPay">Перейти к оплате</button>
+        <span class="hint" id="topupHint"></span>
+      </div>
     </div>
 
     <script src="select.js"></script>

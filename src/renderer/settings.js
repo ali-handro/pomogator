@@ -45,6 +45,17 @@ let saveTimer = null;
 let toastTimer = null;
 let lastHotkeyStatus = { failed: [] };
 
+let appConfig = { donateUrl: '', topupUrl: '', supportContact: '' };
+let topupAmount = 500;
+
+const TOPUP_PLANS = [
+  { amount: 300, bonus: 0 },
+  { amount: 500, bonus: 0 },
+  { amount: 1000, bonus: 10 },
+  { amount: 2000, bonus: 15 },
+  { amount: 5000, bonus: 20 },
+];
+
 const $ = (id) => document.getElementById(id);
 
 const AI_MODEL_PRESETS = [
@@ -626,6 +637,107 @@ async function logoutAccount() {
   renderAccountState();
 }
 
+function renderSupport() {
+  const donate = $('donateBtn');
+  const hint = $('supportHint');
+  if (!donate) return;
+
+  donate.disabled = !appConfig.donateUrl;
+  donate.onclick = () => {
+    if (appConfig.donateUrl) window.api.openExternal(appConfig.donateUrl);
+  };
+
+  if (!hint) return;
+
+  if (!appConfig.donateUrl && !appConfig.topupUrl) {
+    hint.textContent = 'Ссылки на донаты и оплату ещё не настроены.';
+  } else if (!appConfig.topupUrl) {
+    hint.textContent = 'Пополнение пока вручную — через поддержку.';
+  } else {
+    hint.textContent = '';
+  }
+}
+
+function currentTopupPlan() {
+  return TOPUP_PLANS.find((plan) => plan.amount === topupAmount) || TOPUP_PLANS[1];
+}
+
+function renderTopupPlans() {
+  const box = $('topupAmounts');
+  if (!box) return;
+
+  box.innerHTML = '';
+
+  for (const plan of TOPUP_PLANS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'amount';
+    button.textContent = plan.bonus ? `${plan.amount} ₽ +${plan.bonus}%` : `${plan.amount} ₽`;
+    if (plan.amount === topupAmount) button.classList.add('active');
+
+    button.addEventListener('click', () => {
+      topupAmount = plan.amount;
+      renderTopupPlans();
+      renderTopupSummary();
+    });
+
+    box.appendChild(button);
+  }
+}
+
+function renderTopupSummary() {
+  const box = $('topupSummary');
+  if (!box) return;
+
+  const plan = currentTopupPlan();
+  const credited = Math.round(plan.amount * (1 + plan.bonus / 100));
+  const minutes = Math.floor((credited / 449) * 60);
+
+  box.innerHTML = `На балансе: <b>${credited} ₽</b> · это ≈ ${minutes} мин собеседования`;
+}
+
+function openTopup() {
+  const modal = $('topupModal');
+  if (!modal) return;
+
+  if (!accountState || !accountState.loggedIn) {
+    if (hasApi) window.api.openLogin();
+    return;
+  }
+
+  modal.hidden = false;
+  renderTopupPlans();
+  renderTopupSummary();
+
+  const hint = $('topupHint');
+  if (hint) {
+    hint.textContent = appConfig.topupUrl
+      ? ''
+      : 'Онлайн-оплата пока не подключена. Напишите в поддержку — зачислим вручную.';
+  }
+}
+
+function closeTopup() {
+  const modal = $('topupModal');
+  if (modal) modal.hidden = true;
+}
+
+function payTopup() {
+  const hint = $('topupHint');
+
+  if (appConfig.topupUrl) {
+    window.api.openExternal(appConfig.topupUrl);
+    if (hint) hint.textContent = 'Открыл страницу оплаты в браузере. После оплаты баланс обновится.';
+    return;
+  }
+
+  if (hint) {
+    hint.textContent = appConfig.supportContact
+      ? `Онлайн-оплата пока не подключена. Напишите: ${appConfig.supportContact}`
+      : 'Онлайн-оплата пока не подключена.';
+  }
+}
+
 function fill() {
   renderAi();
   renderDisplays();
@@ -633,6 +745,7 @@ function fill() {
   fillSimpleFields();
   renderHotkeys();
   renderAccount();
+  renderSupport();
   syncAllSelects();
 }
 
@@ -1143,7 +1256,19 @@ function bind() {
     }
   });
 
+  $('topupBtn').addEventListener('click', openTopup);
+  $('topupClose').addEventListener('click', closeTopup);
+  $('topupPay').addEventListener('click', payTopup);
+  $('topupModal').addEventListener('click', (event) => {
+    if (event.target === $('topupModal')) closeTopup();
+  });
+
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('topupModal').hidden) {
+      closeTopup();
+      return;
+    }
+
     if (event.key === 'Escape' && !capturingHotkey) window.close();
   });
 }
@@ -1158,6 +1283,11 @@ async function boot() {
 
       const info = await window.api.appInfo();
       $('version').textContent = `v${info.version}`;
+      appConfig = {
+        donateUrl: info.donateUrl || '',
+        topupUrl: info.topupUrl || '',
+        supportContact: info.supportContact || '',
+      };
 
       window.api.onDisplaysChanged(async () => {
         displays = await window.api.getDisplays();
