@@ -1229,6 +1229,15 @@ function bindUi() {
   });
   if (el.btnCapture) el.btnCapture.addEventListener('click', () => solveScreenshot('solve'));
   if (el.btnReview) el.btnReview.addEventListener('click', () => solveScreenshot('review'));
+
+  // Греем захват экрана, пока курсор идёт к кнопке: окно выделения
+  // появится почти сразу.
+  for (const button of [el.btnCapture, el.btnReview]) {
+    if (!button) continue;
+    button.addEventListener('pointerenter', () => {
+      if (typeof window.api.captureWarmup === 'function') window.api.captureWarmup();
+    });
+  }
   if (el.btnCopy) el.btnCopy.addEventListener('click', copyAnswer);
   el.btnClear.addEventListener('click', clearCurrent);
   el.btnHide.addEventListener('click', () => {

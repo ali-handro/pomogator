@@ -42,10 +42,35 @@ function createScreenshotService({
   let captureShot = null;
   let captureScale = 1;
   let captureResolve = null;
+  let pendingRect = null;
+  let warming = null;
+  let lastWarmAt = 0;
+
+  /**
+   * Первый захват экрана в сеансе занимает 2+ секунды: Windows поднимает
+   * композитор. Греем его заранее, чтобы окно выделения появлялось сразу.
+   */
+  async function warmUp() {
+    if (warming) return warming;
+
+    const now = Date.now();
+    if (now - lastWarmAt < 8000) return undefined;
+    lastWarmAt = now;
+
+    warming = desktopCapturer
+      .getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+      .catch(() => undefined)
+      .finally(() => {
+        warming = null;
+      });
+
+    return warming;
+  }
 
   function finishCapture(result) {
     const resolve = captureResolve;
     captureResolve = null;
+    pendingRect = null;
 
     if (captureWin && !captureWin.isDestroyed()) captureWin.close();
     captureWin = null;
@@ -64,67 +89,100 @@ function createScreenshotService({
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     const scale = display.scaleFactor || 1;
 
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: {
-        width: Math.round(display.size.width * scale),
-        height: Math.round(display.size.height * scale),
+    const selection = new Promise((resolve) => {
+      captureResolve = resolve;
+    });
+
+    // Окно выделения показываем сразу, а снимок делаем параллельно. Окно
+    // защищено от захвата, поэтому в кадр не попадает.
+    const win = new BrowserWindow({
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'capture-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
       },
     });
 
-    const source =
-      sources.find((item) => String(item.display_id) === String(display.id)) || sources[0];
-    if (!source || source.thumbnail.isEmpty()) return { ok: false, cancelled: true };
+    captureWin = win;
+    try {
+      win.setContentProtection(true);
+    } catch {
+      /* защита недоступна */
+    }
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setMenuBarVisibility(false);
+    win.loadFile(path.join(__dirname, 'renderer', 'capture.html'));
 
-    captureShot = source.thumbnail;
-    captureScale = scale;
-
-    return new Promise((resolve) => {
-      captureResolve = resolve;
-
-      captureWin = new BrowserWindow({
-        x: display.bounds.x,
-        y: display.bounds.y,
-        width: display.bounds.width,
-        height: display.bounds.height,
-        frame: false,
-        transparent: true,
-        backgroundColor: '#00000000',
-        resizable: false,
-        movable: false,
-        minimizable: false,
-        maximizable: false,
-        fullscreenable: false,
-        skipTaskbar: true,
-        alwaysOnTop: true,
-        hasShadow: false,
-        show: false,
-        webPreferences: {
-          preload: path.join(__dirname, 'capture-preload.js'),
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: true,
-        },
-      });
-
-      captureWin.setAlwaysOnTop(true, 'screen-saver');
-      captureWin.setMenuBarVisibility(false);
-      captureWin.loadFile(path.join(__dirname, 'renderer', 'capture.html'));
-
-      captureWin.once('ready-to-show', () => {
-        if (!captureWin || captureWin.isDestroyed()) return;
-        captureWin.show();
-        captureWin.focus();
-      });
-
-      captureWin.on('closed', () => {
-        captureWin = null;
-        const pending = captureResolve;
-        captureResolve = null;
-        captureShot = null;
-        if (pending) pending({ ok: false, cancelled: true });
-      });
+    win.once('ready-to-show', () => {
+      if (win.isDestroyed()) return;
+      win.show();
+      win.focus();
     });
+
+    win.on('closed', () => {
+      if (captureWin !== win) return;
+      captureWin = null;
+      captureShot = null;
+      pendingRect = null;
+      const pending = captureResolve;
+      captureResolve = null;
+      if (pending) pending({ ok: false, cancelled: true });
+    });
+
+    desktopCapturer
+      .getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(display.size.width * scale),
+          height: Math.round(display.size.height * scale),
+        },
+      })
+      .then((sources) => {
+        if (captureWin !== win) return;
+
+        const source =
+          sources.find((item) => String(item.display_id) === String(display.id)) || sources[0];
+        if (!source || source.thumbnail.isEmpty()) {
+          finishCapture({ ok: false, cancelled: true });
+          return;
+        }
+
+        captureShot = source.thumbnail;
+        captureScale = scale;
+
+        if (pendingRect) {
+          const rect = pendingRect;
+          pendingRect = null;
+          applySelection(rect);
+        }
+      })
+      .catch(() => {
+        if (captureWin === win) finishCapture({ ok: false, cancelled: true });
+      });
+
+    return selection;
+  }
+
+  function applySelection(rect) {
+    const base64 = rect ? cropSelection(rect) : null;
+    finishCapture(base64 ? { ok: true, base64 } : { ok: false, cancelled: true });
   }
 
   function cropSelection(rect) {
@@ -142,7 +200,17 @@ function createScreenshotService({
     let image = captureShot.crop({ x, y, width, height });
     // Больше 1600 px по ширине vision-модели всё равно ужимают.
     if (image.getSize().width > 1600) image = image.resize({ width: 1600, quality: 'good' });
-    return image.toJPEG(88).toString('base64');
+
+    const jpeg = image.toJPEG(88);
+    if (process.env.POMOGATOR_DEBUG_CAPTURE) {
+      try {
+        require('fs').writeFileSync(process.env.POMOGATOR_DEBUG_CAPTURE, jpeg);
+      } catch {
+        /* отладка не критична */
+      }
+    }
+
+    return jpeg.toString('base64');
   }
 
   async function solve(base64, controller, mode) {
@@ -196,9 +264,18 @@ function createScreenshotService({
   }
 
   /** Показывает выделение области и решает задачу/делает ревью. */
-  async function captureAndSolve(controller, mode) {
+  async function captureAndSolve(controller, mode, onCaptured) {
     const shot = await captureArea();
     if (!shot.ok) return { ok: false, cancelled: true };
+
+    // Снимок уже сделан — оверлей можно вернуть, не дожидаясь ответа модели.
+    if (onCaptured) {
+      try {
+        onCaptured();
+      } catch {
+        /* оверлей уже закрыт */
+      }
+    }
 
     await solve(shot.base64, controller, mode);
     return { ok: true };
@@ -206,9 +283,20 @@ function createScreenshotService({
 
   return {
     captureAndSolve,
+    warmUp,
     select: (rect) => {
-      const base64 = rect ? cropSelection(rect) : null;
-      finishCapture(base64 ? { ok: true, base64 } : { ok: false, cancelled: true });
+      if (!rect) {
+        finishCapture({ ok: false, cancelled: true });
+        return;
+      }
+
+      // Снимок может быть ещё не готов — досчитаем, когда он появится.
+      if (!captureShot) {
+        pendingRect = rect;
+        return;
+      }
+
+      applySelection(rect);
     },
     cancel: () => finishCapture({ ok: false, cancelled: true }),
     isOpen: () => !!captureWin,

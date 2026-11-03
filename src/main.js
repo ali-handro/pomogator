@@ -610,6 +610,9 @@ function createOverlay() {
     } catch {
       /* защита уже включена */
     }
+
+    // Заодно прогреваем захват экрана, чтобы скриншот открывался без паузы.
+    screenshots.warmUp();
   });
 
   // Запоминаем, куда пользователь перетащил окно.
@@ -1751,7 +1754,27 @@ function registerIpc() {
 
     // Прячем оверлей на время снимка, чтобы он не попал в кадр.
     const wasVisible = !!(overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible());
-    if (wasVisible) overlayWin.hide();
+    let restored = false;
+    const restoreOverlay = () => {
+      if (restored || !wasVisible || !overlayWin || overlayWin.isDestroyed()) return;
+      restored = true;
+      overlayWin.showInactive();
+      applyCaptureProtection();
+    };
+
+    if (wasVisible) {
+      // Снимаем защиту до скрытия: иначе Windows может оставить чёрный
+      // прямоугольник на месте оверлея в свежем снимке экрана.
+      try {
+        overlayWin.setContentProtection(false);
+      } catch {
+        /* защита уже снята */
+      }
+      overlayWin.hide();
+    }
+
+    // Даём композитору убрать окно из кадра.
+    await new Promise((resolve) => setTimeout(resolve, 140));
 
     if (activeAbort) activeAbort.abort();
     const controller = new AbortController();
@@ -1759,7 +1782,7 @@ function registerIpc() {
 
     sendToOverlay('llm:start');
     try {
-      const result = await screenshots.captureAndSolve(controller, mode);
+      const result = await screenshots.captureAndSolve(controller, mode, restoreOverlay);
       if (result.cancelled) return { ok: false, cancelled: true };
 
       sendToOverlay('llm:done');
@@ -1770,12 +1793,13 @@ function registerIpc() {
       return { ok: false, error: err.message };
     } finally {
       if (activeAbort === controller) activeAbort = null;
-
-      if (wasVisible && overlayWin && !overlayWin.isDestroyed()) {
-        overlayWin.showInactive();
-        applyCaptureProtection();
-      }
+      restoreOverlay();
     }
+  });
+
+  ipcMain.handle('vision:warmup', async () => {
+    await screenshots.warmUp();
+    return { ok: true };
   });
 
   ipcMain.handle('stt:transcribe', async (_event, payload) => {
