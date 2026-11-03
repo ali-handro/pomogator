@@ -73,7 +73,7 @@ async function cfRun(url, headers, body) {
   return response.json();
 }
 
-async function transcribe(wav, { language = 'ru' } = {}) {
+async function transcribe(wav, { language = 'ru', prompt = '' } = {}) {
   const accountId = String(process.env.CF_ACCOUNT_ID || '').trim();
   const token = String(process.env.CF_API_TOKEN || '').trim();
 
@@ -85,29 +85,31 @@ async function transcribe(wav, { language = 'ru' } = {}) {
 
   try {
     const data = await cfRun(
-      `${base}/@cf/deepgram/nova-3?language=${encodeURIComponent(language)}&smart_format=true&punctuate=true`,
-      { authorization: `Bearer ${token}`, 'content-type': 'audio/wav' },
-      wav
+      `${base}/@cf/openai/whisper-large-v3-turbo`,
+      { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      JSON.stringify({
+        audio: Buffer.from(wav).toString('base64'),
+        language,
+        task: 'transcribe',
+        ...(prompt ? { initial_prompt: prompt } : {}),
+      })
     );
 
-    return String(
-      data?.result?.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
-    ).trim();
+    const text = String(data?.result?.text || '').trim();
+    if (text) return text;
   } catch (err) {
-    console.warn('[ai] nova не ответила:', err.message);
+    console.warn('[ai] whisper не ответил:', err.message);
   }
 
   const data = await cfRun(
-    `${base}/@cf/openai/whisper-large-v3-turbo`,
-    { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    JSON.stringify({
-      audio: Buffer.from(wav).toString('base64'),
-      language,
-      task: 'transcribe',
-    })
+    `${base}/@cf/deepgram/nova-3?language=${encodeURIComponent(language)}&smart_format=true&punctuate=true`,
+    { authorization: `Bearer ${token}`, 'content-type': 'audio/wav' },
+    wav
   );
 
-  return String(data?.result?.text || data?.text || '').trim();
+  return String(
+    data?.result?.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
+  ).trim();
 }
 
 function cleanMessages(input) {

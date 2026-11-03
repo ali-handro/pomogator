@@ -16,7 +16,7 @@ let settings = {
     format: 'cloudflare',
     baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run',
     accountId: '',
-    model: '@cf/deepgram/nova-3',
+    model: '@cf/openai/whisper-large-v3-turbo',
     language: 'ru',
   },
   keys: {},
@@ -67,7 +67,7 @@ const AI_MODEL_PRESETS = [
 ];
 
 const STT_MODEL_PRESETS = {
-  cloudflare: ['@cf/deepgram/nova-3', '@cf/openai/whisper-large-v3-turbo', '@cf/openai/whisper'],
+  cloudflare: ['@cf/openai/whisper-large-v3-turbo', '@cf/openai/whisper', '@cf/deepgram/nova-3'],
   openai: [
     'whisper-1',
     'whisper-large-v3',

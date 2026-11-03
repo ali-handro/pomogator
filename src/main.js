@@ -111,7 +111,7 @@ const DEFAULT_SETTINGS = {
     format: 'cloudflare', // openai | cloudflare
     baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run',
     accountId: '',
-    model: '@cf/deepgram/nova-3',
+    model: '@cf/openai/whisper-large-v3-turbo',
     language: 'ru',
   },
   localSttModel: 'base',
@@ -256,7 +256,8 @@ function loadSettings() {
             : 'https://api.mistral.ai/v1',
           accountId: cloudflare ? accountId : '',
           model: String(
-            settings.sttModel || (cloudflare ? '@cf/deepgram/nova-3' : 'voxtral-mini-latest')
+            settings.sttModel ||
+              (cloudflare ? '@cf/openai/whisper-large-v3-turbo' : 'voxtral-mini-latest')
           ),
           language: 'ru',
         };
@@ -269,6 +270,18 @@ function loadSettings() {
 
     settings.ai = { ...DEFAULT_SETTINGS.ai, ...(settings.ai || {}) };
     settings.stt = { ...DEFAULT_SETTINGS.stt, ...(settings.stt || {}) };
+
+    // Для русского Whisper точнее, чем Nova. Переводим один раз.
+    if (!settings.sttQuality) {
+      if (
+        settings.stt.format === 'cloudflare' &&
+        settings.stt.model === '@cf/deepgram/nova-3'
+      ) {
+        settings.stt.model = '@cf/openai/whisper-large-v3-turbo';
+      }
+      settings.sttQuality = 2;
+      persist();
+    }
 
     // Старый файл с ключами в открытом виде или без новых полей — пересохраняем.
     if (legacyKeys || !parsed.ai || !parsed.stt) persist();
@@ -585,6 +598,17 @@ function createOverlay() {
     if (isDev) {
       console.log('[overlay] bounds', JSON.stringify(overlayWin.getBounds()));
       console.log('[overlay] workArea', JSON.stringify(screen.getPrimaryDisplay().workArea));
+    }
+  });
+
+  // Windows иногда теряет защиту от захвата после скрытия и показа окна.
+  overlayWin.on('show', () => {
+    applyCaptureProtection();
+    try {
+      overlayWin.setContentProtection(false);
+      overlayWin.setContentProtection(true);
+    } catch {
+      /* защита уже включена */
     }
   });
 
@@ -1574,9 +1598,9 @@ function registerIpc() {
       return {
         ok: true,
         models: [
-          '@cf/deepgram/nova-3',
           '@cf/openai/whisper-large-v3-turbo',
           '@cf/openai/whisper',
+          '@cf/deepgram/nova-3',
         ],
       };
     }
@@ -1725,6 +1749,10 @@ function registerIpc() {
   ipcMain.handle('vision:capture', async (_event, payload) => {
     const mode = payload && payload.mode === 'review' ? 'review' : 'solve';
 
+    // Прячем оверлей на время снимка, чтобы он не попал в кадр.
+    const wasVisible = !!(overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible());
+    if (wasVisible) overlayWin.hide();
+
     if (activeAbort) activeAbort.abort();
     const controller = new AbortController();
     activeAbort = controller;
@@ -1742,6 +1770,11 @@ function registerIpc() {
       return { ok: false, error: err.message };
     } finally {
       if (activeAbort === controller) activeAbort = null;
+
+      if (wasVisible && overlayWin && !overlayWin.isDestroyed()) {
+        overlayWin.showInactive();
+        applyCaptureProtection();
+      }
     }
   });
 
@@ -1772,7 +1805,12 @@ function registerIpc() {
       const kind = override && override.kind === 'meeting' ? 'meeting' : 'interview';
 
       try {
-        const result = await account.transcribe(audio, kind, settings.language);
+        const result = await account.transcribe(
+          audio,
+          kind,
+          settings.language,
+          settings.contextPrompt || ''
+        );
 
         if (result && result.ok) {
           sendToOverlay('cloud:usage', {
@@ -1820,6 +1858,7 @@ function registerIpc() {
         apiKey: (settings.keys && settings.keys.stt) || '',
         model: stt.model,
         language: stt.language || settings.language || 'ru',
+        initialPrompt: settings.contextPrompt || '',
         audio,
         signal: controller.signal,
       });

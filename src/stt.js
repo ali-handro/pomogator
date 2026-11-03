@@ -14,11 +14,11 @@ const STT = {
   cloudflare: {
     label: 'Cloudflare Workers AI',
     baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run',
-    defaultModel: '@cf/deepgram/nova-3',
+    defaultModel: '@cf/openai/whisper-large-v3-turbo',
     models: [
-      '@cf/deepgram/nova-3',
       '@cf/openai/whisper-large-v3-turbo',
       '@cf/openai/whisper',
+      '@cf/deepgram/nova-3',
     ],
     keyProvider: 'cloudflare',
     needsAccount: true,
@@ -55,13 +55,19 @@ async function transcribe(options) {
     return await transcribeOnce({ ...options, model: chosen });
   } catch (err) {
     const nova = /^@cf\/deepgram\//.test(chosen);
+    const whisper = /^@cf\/openai\/whisper/.test(chosen);
     const cloudflare =
       providerId === 'cloudflare' || (providerId === 'custom' && format === 'cloudflare');
 
-    // Nova может быть недоступна — молча уходим на Whisper.
+    // Если основной модели нет — пробуем другую модель Cloudflare.
     if (cloudflare && nova) {
       console.warn('[stt] nova failed:', err.message);
       return transcribeOnce({ ...options, model: '@cf/openai/whisper-large-v3-turbo' });
+    }
+
+    if (cloudflare && whisper) {
+      console.warn('[stt] whisper failed:', err.message);
+      return transcribeOnce({ ...options, model: '@cf/openai/whisper' });
     }
 
     throw err;
@@ -139,6 +145,7 @@ async function transcribeOnce({
     form.append('language', language);
     form.append('response_format', 'json');
     form.append('temperature', '0');
+    if (hint) form.append('prompt', hint);
     form.append('file', new Blob([audio], { type: 'audio/wav' }), 'chunk.wav');
 
     res = await net.fetch(`${base}/audio/transcriptions`, {

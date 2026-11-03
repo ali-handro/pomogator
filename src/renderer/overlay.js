@@ -472,10 +472,11 @@ async function copyAnswer() {
 /* ------------------------------------------------------------------ */
 
 const SAMPLE_RATE = 16000;
-const VAD_THRESHOLD = 0.014;
-const PRE_ROLL_CHUNKS = 3; // ~380 мс до начала фразы
-const MIN_SPEECH_MS = 380;
-const MAX_UTTERANCE_MS = 12000;
+const VAD_THRESHOLD = 0.010;
+const MAX_VAD_THRESHOLD = 0.024;
+const PRE_ROLL_CHUNKS = 4; // ~500 мс до начала фразы
+const MIN_SPEECH_MS = 250;
+const MAX_UTTERANCE_MS = 15000;
 // Пауза, после которой фраза считается законченной. Чем короче, тем быстрее
 // приходит ответ, но слишком короткая обрывает человека на середине мысли.
 const SILENCE_MS = 450;
@@ -487,6 +488,7 @@ const stt = {
   source: null, // mic | system
   rate: 0,
   threshold: VAD_THRESHOLD,
+  noiseFloor: 0.004,
   listening: true,
   pausedByUser: false,
   meetingPaused: false,
@@ -642,11 +644,52 @@ const STT_NOISE = [
   'редактор субтитров',
   'корректор',
   'продолжение в следующей',
+  'subtítulos',
+  'subtitulos',
+  'gracias por ver',
+  'suscríbete',
+  'suscribete',
+  'no olvides suscribirte',
+  'hasta la próxima',
+  'hasta la proxima',
 ];
 
 function isSttNoise(text) {
   const low = String(text || '').toLowerCase();
   return STT_NOISE.some((fragment) => low.includes(fragment));
+}
+
+/**
+ * Whisper на шуме иногда отвечает на другом языке — чаще всего испанским.
+ * Отбрасываем только явно испанский текст: английские технические вопросы
+ * и термины (Docker, Java, API) не трогаем.
+ */
+function isForeignText(text) {
+  const value = String(text || '').trim();
+  if (value.length < 8) return false;
+
+  const cyrillic = (value.match(/[а-яё]/gi) || []).length;
+  if (cyrillic > 0) return false;
+
+  const latin = (value.match(/[a-z]/gi) || []).length;
+  if (!latin) return false;
+
+  // Явные признаки испанского: перевёрнутые знаки и «ñ».
+  if (/[¿¡ñ]/i.test(value)) return true;
+
+  const spanish =
+    /\b(el|la|los|las|del|que|una|es|por|con|para|como|pero|más|este|esta|esto|muy|también|porque|cuando|donde|hay|puede|todo|nada|gracias|hola|usted|ustedes|nosotros|ellos|ella|tiene|tienen|hacer|ahora|bien|mal|suscríbete|subtítulos)\b/gi;
+
+  const hits = (value.match(spanish) || []).length;
+  if (hits >= 3) return true;
+
+  // Длинная фраза без единого русского слова и без английских
+  // терминов-вопросов — почти наверняка галлюцинация.
+  const englishQuestion =
+    /\b(what|why|how|when|where|which|who|is|are|does|do|can|could|would|should|the|and|with|between)\b/gi;
+  const englishHits = (value.match(englishQuestion) || []).length;
+
+  return value.length > 40 && hits >= 2 && englishHits < 2;
 }
 
 // Одна и та же фраза, услышанная дважды подряд, — почти всегда эхо.
@@ -691,7 +734,9 @@ async function drainQueue() {
     if (!text) return;
 
     const words = text.split(' ').filter(Boolean).length;
-    if (words < 2) {
+    // Совсем короткие обрывки («да», «ну») — шум. Однословный вопрос
+    // («Почему?») уже пропускаем дальше.
+    if (words < 2 && text.length < 4) {
       el.hint.textContent = `Услышал: «${text}»`;
       resumeState();
       return;
@@ -700,6 +745,14 @@ async function drainQueue() {
     if (isSttNoise(text)) {
       console.log('[stt] шум/титры, пропускаю:', text);
       el.hint.textContent = `Пропустил шум: «${text}»`;
+      resumeState();
+      return;
+    }
+
+    const sttLanguage = (settings.stt && settings.stt.language) || settings.language || 'ru';
+    if (sttLanguage === 'ru' && isForeignText(text)) {
+      console.log('[stt] не русский текст, пропускаю:', text);
+      el.hint.textContent = `Пропустил чужой язык: «${text.slice(0, 60)}»`;
       resumeState();
       return;
     }
@@ -840,7 +893,8 @@ async function startCapture(source) {
     stt.stream = stream;
     stt.ctx = new AudioContext();
     stt.rate = stt.ctx.sampleRate;
-    stt.threshold = wanted === 'system' ? 0.009 : VAD_THRESHOLD;
+    stt.threshold = wanted === 'system' ? 0.008 : VAD_THRESHOLD;
+    stt.noiseFloor = 0.004;
     if (stt.ctx.state === 'suspended') await stt.ctx.resume();
 
     const audioSource = stt.ctx.createMediaStreamSource(stt.stream);
@@ -891,7 +945,20 @@ function onAudio(chunk) {
   if (!stt.listening) return;
 
   const chunkMs = (chunk.length / (stt.rate || SAMPLE_RATE)) * 1000;
-  const voiced = rms > (stt.threshold || VAD_THRESHOLD);
+
+  // Порог подстраивается под фон: тихую речь не теряем, а шум не считаем
+  // началом фразы. Фон обновляем только на явной тишине.
+  const baseThreshold = stt.threshold || VAD_THRESHOLD;
+  if (!stt.inSpeech && rms < baseThreshold * 0.8) {
+    const floor = Number(stt.noiseFloor) || 0.004;
+    stt.noiseFloor = Math.min(baseThreshold * 1.6, floor * 0.95 + rms * 0.05);
+  }
+
+  const adaptive = Math.max(
+    baseThreshold,
+    Math.min(MAX_VAD_THRESHOLD, (Number(stt.noiseFloor) || 0.004) * 2.2)
+  );
+  const voiced = rms > adaptive;
 
   if (voiced) {
     if (!stt.inSpeech) {

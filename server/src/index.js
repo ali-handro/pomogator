@@ -206,7 +206,10 @@ route(
       throw new HttpError(402, 'Недостаточно средств. Пополните баланс.');
     }
 
-    const text = await ai.transcribe(audio, { language: body.language || 'ru' });
+    const text = await ai.transcribe(audio, {
+      language: body.language || 'ru',
+      prompt: String(body.prompt || '').slice(0, 700),
+    });
     const charge = wallet.chargeSeconds(user.id, kind, seconds, liveSession.device_id);
 
     return {

@@ -255,7 +255,7 @@ function createAccount({ getSettings, onChanged }) {
     return entry.id;
   }
 
-  async function transcribe(wav, kind, language) {
+  async function transcribe(wav, kind, language, prompt) {
     const key = normalizeKind(kind);
     const audio = Buffer.from(wav).toString('base64');
 
@@ -267,6 +267,7 @@ function createAccount({ getSettings, onChanged }) {
           sessionId,
           audio,
           language: language || 'ru',
+          prompt: prompt || '',
         },
       });
 
