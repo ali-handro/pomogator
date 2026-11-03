@@ -474,6 +474,9 @@ function renderAccountState() {
   guest.hidden = loggedIn;
   user.hidden = !loggedIn;
 
+  const title = $('accountTitle');
+  if (title) title.textContent = loggedIn ? 'Аккаунт и баланс' : 'Облако Помогатора';
+
   if (!loggedIn) return;
 
   $('accountEmail').textContent = accountState.email || '';

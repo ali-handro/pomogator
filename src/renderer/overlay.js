@@ -1039,6 +1039,19 @@ async function refreshCloudBalance() {
   }
 
   try {
+    const status = await window.api.accountStatus();
+    if (!status || !status.loggedIn) {
+      box.hidden = true;
+      sep.hidden = true;
+      return;
+    }
+  } catch {
+    box.hidden = true;
+    sep.hidden = true;
+    return;
+  }
+
+  try {
     const quote = await window.api.accountQuote('interview');
 
     if (!quote || !quote.ok) {
