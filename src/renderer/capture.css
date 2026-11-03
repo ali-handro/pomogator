@@ -9,14 +9,27 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: rgba(8, 12, 20, 0.45);
+  background: #05070c;
   cursor: crosshair;
   user-select: none;
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
+.shot {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+  pointer-events: none;
+  user-select: none;
+  filter: brightness(0.82);
+}
+
 .sel {
   position: absolute;
+  z-index: 2;
   border: 2px solid #6ea8ff;
   border-radius: 3px;
   background: rgba(110, 168, 255, 0.08);
@@ -26,6 +39,7 @@ body {
 
 .hint {
   position: absolute;
+  z-index: 3;
   left: 50%;
   top: 24px;
   transform: translateX(-50%);

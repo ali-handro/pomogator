@@ -4,12 +4,13 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     />
     <title>Выделить область</title>
     <link rel="stylesheet" href="capture.css" />
   </head>
   <body>
+    <img class="shot" id="shot" alt="" />
     <div class="sel" id="sel" hidden></div>
     <div class="hint" id="hint">Выделите задачу мышью · Esc — отмена</div>
     <script src="capture.js"></script>

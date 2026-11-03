@@ -397,8 +397,19 @@ function displayForOverlay() {
   return displays[index] || screen.getPrimaryDisplay();
 }
 
-function overlayBounds() {
-  const pos = settings.overlayPos;
+/** Перенести оверлей на конкретный монитор и запомнить это. */
+function placeOverlayOnDisplay(display) {
+  const displays = screen.getAllDisplays();
+  const index = displays.findIndex((item) => String(item.id) === String(display.id));
+  if (index < 0) return;
+
+  settings.overlayDisplay = index;
+  settings.overlayPos = null;
+  applyOverlayBounds();
+  persist();
+}
+
+function overlayBounds() {  const pos = settings.overlayPos;
   const display =
     pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)
       ? screen.getDisplayNearestPoint({ x: Math.round(pos.x), y: Math.round(pos.y) })
@@ -964,6 +975,17 @@ function toggleOverlay() {
   if (overlayWin.isVisible()) {
     overlayWin.hide();
   } else {
+    // Показываем там, где сейчас работает пользователь, даже если
+    // оверлей в прошлый раз был на другом мониторе.
+    const cursor = screen.getCursorScreenPoint();
+    const target = screen.getDisplayNearestPoint(cursor);
+    const b = overlayWin.getBounds();
+    const current = screen.getDisplayNearestPoint({
+      x: Math.round(b.x + b.width / 2),
+      y: Math.round(b.y + b.height / 2),
+    });
+    if (String(current.id) !== String(target.id)) placeOverlayOnDisplay(target);
+
     overlayWin.showInactive();
     applyClickThrough();
   }
@@ -1773,6 +1795,7 @@ function registerIpc() {
     screenshots.select({ ...rect, displayId: screenshots.displayFor(event.sender.id) });
   });
   ipcMain.on('capture:cancel', () => screenshots.cancel());
+  ipcMain.on('capture:image-ready', (event) => screenshots.imageReady(event.sender.id));
 
   ipcMain.handle('vision:capture', async (_event, payload) => {
     const mode = payload && payload.mode === 'review' ? 'review' : 'solve';
@@ -2001,6 +2024,18 @@ function registerIpc() {
 
   ipcMain.on('overlay:open', () => {
     if (!overlayWin || overlayWin.isDestroyed()) return;
+
+    // Открыли из настроек — показываем оверлей на том же мониторе,
+    // где пользователь только что видел настройки.
+    if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible()) {
+      const b = settingsWin.getBounds();
+      placeOverlayOnDisplay(
+        screen.getDisplayNearestPoint({
+          x: Math.round(b.x + b.width / 2),
+          y: Math.round(b.y + b.height / 2),
+        })
+      );
+    }
 
     overlayWin.show();
     overlayWin.moveTop();

@@ -160,6 +160,7 @@ function createScreenshotService({
 
   function revealCaptureWindow(win) {
     if (win.isDestroyed() || win.isVisible()) return;
+    if (!captureRevealed || !win.__imageReady) return;
 
     if (win.__focus) {
       win.show();
@@ -171,9 +172,29 @@ function createScreenshotService({
 
   function revealCaptureWindows() {
     captureRevealed = true;
+
     for (const win of captureWins) {
-      if (win.__ready) revealCaptureWindow(win);
+      const shot = captureShots.get(win.__displayId);
+      if (!shot) continue;
+
+      // Показываем замороженный снимок, а не живой экран: видео и
+      // анимации под окном выделения иначе пропадают.
+      const url = `data:image/jpeg;base64,${shot.image.toJPEG(82).toString('base64')}`;
+
+      if (win.__ready) {
+        win.webContents.send('capture:image', url);
+      } else {
+        win.__pendingShot = url;
+      }
     }
+  }
+
+  function imageReady(webContentsId) {
+    const win = captureWins.find((item) => item.webContents.id === webContentsId);
+    if (!win) return;
+
+    win.__imageReady = true;
+    revealCaptureWindow(win);
   }
 
   function createCaptureWindow(display, cursorDisplay) {
@@ -206,14 +227,13 @@ function createScreenshotService({
     captureDisplayBySender.set(win.webContents.id, String(display.id));
     const senderId = win.webContents.id;
 
-    try {
-      win.setContentProtection(true);
-    } catch {
-      /* защита недоступна */
-    }
-
+    // Окно показывается только после снимка, поэтому защита от захвата
+    // ему не нужна: она заставляла видео в браузере пропадать.
     win.__focus = String(display.id) === String(cursorDisplay.id);
+    win.__displayId = String(display.id);
     win.__ready = false;
+    win.__imageReady = false;
+    win.__pendingShot = null;
 
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setMenuBarVisibility(false);
@@ -224,9 +244,10 @@ function createScreenshotService({
 
       win.__ready = true;
 
-      // Пока не сделан снимок, окно не показываем: иначе аппаратный
-      // оверлей видео (YouTube) попадает в кадр серым прямоугольником.
-      if (captureRevealed) revealCaptureWindow(win);
+      if (win.__pendingShot) {
+        win.webContents.send('capture:image', win.__pendingShot);
+        win.__pendingShot = null;
+      }
     });
 
     win.on('closed', () => {
@@ -349,6 +370,7 @@ function createScreenshotService({
   return {
     captureAndSolve,
     warmUp,
+    imageReady,
     displayFor: (webContentsId) => captureDisplayBySender.get(webContentsId) || '',
     select: (rect) => {
       if (!rect) {

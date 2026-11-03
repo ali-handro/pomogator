@@ -2,9 +2,27 @@
 
 const sel = document.getElementById('sel');
 const hint = document.getElementById('hint');
+const shot = document.getElementById('shot');
 
 let start = null;
 let rect = null;
+
+if (shot && window.captureApi && window.captureApi.onImage) {
+  let readySent = false;
+  const signalReady = () => {
+    if (readySent) return;
+    readySent = true;
+    window.captureApi.imageReady();
+  };
+
+  shot.addEventListener('load', signalReady, { once: true });
+  shot.addEventListener('error', signalReady, { once: true });
+
+  window.captureApi.onImage((url) => {
+    shot.src = url;
+    if (shot.complete && shot.naturalWidth) signalReady();
+  });
+}
 
 function draw() {
   if (!rect) {
