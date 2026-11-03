@@ -62,6 +62,7 @@ const MAX_HISTORY = 40;
 const answerHistory = [];
 let historyIndex = -1;
 let activeEntry = null;
+let answerPinned = true;
 
 /* ------------------------------------------------------------------ */
 /*  Состояние                                                          */
@@ -97,6 +98,8 @@ function setQuestion(text) {
 function clearAnswer() {
   document.body.classList.remove('has-answer');
   el.answerText.textContent = '';
+  el.answerText.scrollTop = 0;
+  answerPinned = true;
   el.latency.hidden = true;
   scheduleRegionUpdate();
 }
@@ -104,12 +107,20 @@ function clearAnswer() {
 function showAnswer(text) {
   document.body.classList.add('has-answer');
   el.answerText.textContent = text;
+  answerPinned = true;
+  el.answerText.scrollTop = 0;
   scheduleRegionUpdate();
 }
 
 function appendAnswer(text) {
   document.body.classList.add('has-answer');
+  const pinned = answerPinned;
+
   el.answerText.textContent += text;
+
+  // Пока пользователь не отлистал вверх, держим свежий текст внизу.
+  if (pinned) el.answerText.scrollTop = el.answerText.scrollHeight;
+
   scheduleRegionUpdate();
 }
 
@@ -142,8 +153,8 @@ function pushAnswerRegion() {
   regionFrame = 0;
   if (!hasApi || !window.api.setAnswerRegion) return;
 
-  const navigable = answerHistory.length > 1 && document.body.classList.contains('has-answer');
-  if (!navigable) {
+  const hasAnswer = document.body.classList.contains('has-answer');
+  if (!hasAnswer) {
     window.api.setAnswerRegion(null);
     return;
   }
@@ -228,23 +239,47 @@ function latestAnswer() {
 
 /* Колесо мыши и стрелки работают только над текстом ответа. */
 const WHEEL_STEP = 40;
+const SCROLL_STEP = 80;
 let wheelAccum = 0;
 let wheelLockUntil = 0;
 // Глобальный хук в главном процессе уже перелистнул — не дублируем.
 let wheelSuppressUntil = 0;
 
-function onAnswerWheel(event) {
-  if (!answerHistory.length) return;
+/** Прокрутить текст ответа. false — прокручивать нечего, можно листать историю. */
+function scrollAnswerBy(delta) {
+  const box = el.answerText;
+  if (!el.answerText || box.scrollHeight <= box.clientHeight + 1) return false;
 
+  const before = box.scrollTop;
+  box.scrollTop = before + delta;
+  if (box.scrollTop === before) return false;
+
+  answerPinned = box.scrollHeight - box.scrollTop - box.clientHeight < 12;
+  scheduleRegionUpdate();
+  return true;
+}
+
+function onAnswerWheel(event) {
   event.preventDefault();
 
   if (Date.now() < wheelSuppressUntil) return;
 
+  const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
+  const delta = event.deltaY * scale;
+
+  // Сначала листаем длинный ответ, и только на краю — историю.
+  if (scrollAnswerBy(delta)) {
+    wheelAccum = 0;
+    if (hasApi && window.api.noteWheelHandled) window.api.noteWheelHandled();
+    return;
+  }
+
+  if (!answerHistory.length) return;
+
   const now = performance.now();
   if (now < wheelLockUntil) return;
 
-  const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
-  wheelAccum += event.deltaY * scale;
+  wheelAccum += delta;
   if (Math.abs(wheelAccum) < WHEEL_STEP) return;
 
   const direction = wheelAccum < 0 ? -1 : 1;
@@ -1222,6 +1257,14 @@ function bindUi() {
   if (el.btnJumpLatest) el.btnJumpLatest.addEventListener('click', latestAnswer);
 
   (el.answer || el.answerText).addEventListener('wheel', onAnswerWheel, { passive: false });
+  el.answerText.addEventListener(
+    'scroll',
+    () => {
+      answerPinned =
+        el.answerText.scrollHeight - el.answerText.scrollTop - el.answerText.clientHeight < 12;
+    },
+    { passive: true }
+  );
   document.addEventListener('keydown', onAnswerKeydown);
   window.addEventListener('resize', scheduleRegionUpdate);
   el.btnRegen.addEventListener('click', () => {
@@ -1371,6 +1414,12 @@ function bindIpc() {
   window.api.onAction('history-prev', prevAnswer);
   window.api.onAction('history-next', nextAnswer);
   window.api.onAction('history-latest', latestAnswer);
+  window.api.onAction('scroll-up', () => {
+    if (!scrollAnswerBy(-SCROLL_STEP)) prevAnswer();
+  });
+  window.api.onAction('scroll-down', () => {
+    if (!scrollAnswerBy(SCROLL_STEP)) nextAnswer();
+  });
 }
 
 async function boot() {

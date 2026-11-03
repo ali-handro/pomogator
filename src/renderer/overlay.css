@@ -342,8 +342,9 @@ body.browsing .hist-count {
   z-index: 1;
   display: flex;
   flex: 1 1 auto;
-  align-items: center;
+  align-items: stretch;
   min-height: 0;
+  overflow: hidden;
 }
 
 .hint {
@@ -353,7 +354,12 @@ body.browsing .hist-count {
 
 .answer-text {
   display: none;
-  overflow: hidden;
+  width: 100%;
+  max-height: calc(var(--answer-lines, 6) * 1.45em);
+  margin-block: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 8px;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.45;
@@ -361,12 +367,26 @@ body.browsing .hist-count {
   color: var(--text);
   white-space: pre-wrap;
   text-wrap: pretty;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--answer-lines, 6);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(110, 168, 255, 0.45) transparent;
+  overscroll-behavior: contain;
+}
+
+.answer-text::-webkit-scrollbar {
+  width: 6px;
+}
+
+.answer-text::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.answer-text::-webkit-scrollbar-thumb {
+  background: rgba(110, 168, 255, 0.45);
+  border-radius: 999px;
 }
 
 body.has-answer .answer-text {
-  display: -webkit-box;
+  display: block;
 }
 
 body.has-answer .hint {

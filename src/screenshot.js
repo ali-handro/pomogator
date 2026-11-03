@@ -38,9 +38,9 @@ function createScreenshotService({
   visionModel,
   cloudChat,
 }) {
-  let captureWin = null;
-  let captureShot = null;
-  let captureScale = 1;
+  let captureWins = [];
+  let captureShots = new Map();
+  let captureDisplayBySender = new Map();
   let captureResolve = null;
   let pendingRect = null;
   let warming = null;
@@ -72,29 +72,89 @@ function createScreenshotService({
     captureResolve = null;
     pendingRect = null;
 
-    if (captureWin && !captureWin.isDestroyed()) captureWin.close();
-    captureWin = null;
-    captureShot = null;
+    for (const win of captureWins) {
+      if (!win.isDestroyed()) win.close();
+    }
+
+    captureWins = [];
+    captureShots = new Map();
+    captureDisplayBySender = new Map();
 
     if (resolve) resolve(result);
   }
 
   /**
-   * Снимаем экран ДО показа окна выделения, поэтому рамка не попадает
-   * в картинку. Координаты выделения пересчитываем в пиксели снимка.
+   * Выделение показываем на всех экранах сразу. Снимок каждого экрана
+   * делается параллельно, поэтому второе окно выделения тоже работает.
    */
   async function captureArea() {
-    if (captureWin) return { ok: false, cancelled: true };
+    if (captureWins.length) return { ok: false, cancelled: true };
 
-    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    const scale = display.scaleFactor || 1;
+    const displays = screen.getAllDisplays();
+    if (!displays.length) return { ok: false, cancelled: true };
 
     const selection = new Promise((resolve) => {
       captureResolve = resolve;
     });
 
-    // Окно выделения показываем сразу, а снимок делаем параллельно. Окно
-    // защищено от захвата, поэтому в кадр не попадает.
+    const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+
+    for (const display of displays) {
+      captureWins.push(createCaptureWindow(display, cursorDisplay));
+    }
+
+    const maxWidth = Math.max(
+      ...displays.map((d) => Math.round(d.size.width * (d.scaleFactor || 1)))
+    );
+    const maxHeight = Math.max(
+      ...displays.map((d) => Math.round(d.size.height * (d.scaleFactor || 1)))
+    );
+
+    desktopCapturer
+      .getSources({
+        types: ['screen'],
+        thumbnailSize: { width: maxWidth, height: maxHeight },
+      })
+      .then((sources) => {
+        if (!captureResolve) return;
+
+        const shots = new Map();
+
+        for (const display of displays) {
+          const source = sources.find(
+            (item) => String(item.display_id) === String(display.id)
+          );
+          if (!source || source.thumbnail.isEmpty()) continue;
+
+          const size = source.thumbnail.getSize();
+          shots.set(String(display.id), {
+            image: source.thumbnail,
+            scaleX: size.width / display.bounds.width,
+            scaleY: size.height / display.bounds.height,
+          });
+        }
+
+        if (!shots.size) {
+          finishCapture({ ok: false, cancelled: true });
+          return;
+        }
+
+        captureShots = shots;
+
+        if (pendingRect) {
+          const rect = pendingRect;
+          pendingRect = null;
+          applySelection(rect);
+        }
+      })
+      .catch(() => {
+        if (captureResolve) finishCapture({ ok: false, cancelled: true });
+      });
+
+    return selection;
+  }
+
+  function createCaptureWindow(display, cursorDisplay) {
     const win = new BrowserWindow({
       x: display.bounds.x,
       y: display.bounds.y,
@@ -120,64 +180,41 @@ function createScreenshotService({
       },
     });
 
-    captureWin = win;
+    captureDisplayBySender.set(win.webContents.id, String(display.id));
+    const senderId = win.webContents.id;
+
     try {
       win.setContentProtection(true);
     } catch {
       /* защита недоступна */
     }
+
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setMenuBarVisibility(false);
     win.loadFile(path.join(__dirname, 'renderer', 'capture.html'));
 
     win.once('ready-to-show', () => {
       if (win.isDestroyed()) return;
-      win.show();
-      win.focus();
+
+      // Фокус оставляем на экране, где сейчас курсор: Esc должен работать
+      // там, где пользователь начал выделение.
+      if (String(display.id) === String(cursorDisplay.id)) {
+        win.show();
+        win.focus();
+      } else {
+        win.showInactive();
+      }
     });
 
     win.on('closed', () => {
-      if (captureWin !== win) return;
-      captureWin = null;
-      captureShot = null;
-      pendingRect = null;
-      const pending = captureResolve;
-      captureResolve = null;
-      if (pending) pending({ ok: false, cancelled: true });
+      captureDisplayBySender.delete(senderId);
+      captureWins = captureWins.filter((item) => item !== win);
+
+      // Закрыли окно выделения (Esc) — отменяем весь захват.
+      if (captureResolve) finishCapture({ ok: false, cancelled: true });
     });
 
-    desktopCapturer
-      .getSources({
-        types: ['screen'],
-        thumbnailSize: {
-          width: Math.round(display.size.width * scale),
-          height: Math.round(display.size.height * scale),
-        },
-      })
-      .then((sources) => {
-        if (captureWin !== win) return;
-
-        const source =
-          sources.find((item) => String(item.display_id) === String(display.id)) || sources[0];
-        if (!source || source.thumbnail.isEmpty()) {
-          finishCapture({ ok: false, cancelled: true });
-          return;
-        }
-
-        captureShot = source.thumbnail;
-        captureScale = scale;
-
-        if (pendingRect) {
-          const rect = pendingRect;
-          pendingRect = null;
-          applySelection(rect);
-        }
-      })
-      .catch(() => {
-        if (captureWin === win) finishCapture({ ok: false, cancelled: true });
-      });
-
-    return selection;
+    return win;
   }
 
   function applySelection(rect) {
@@ -186,18 +223,23 @@ function createScreenshotService({
   }
 
   function cropSelection(rect) {
-    if (!captureShot) return null;
+    if (!captureShots.size) return null;
 
-    const scale = captureScale || 1;
-    const size = captureShot.getSize();
-    const x = Math.max(0, Math.round(rect.x * scale));
-    const y = Math.max(0, Math.round(rect.y * scale));
-    const width = Math.min(size.width - x, Math.round(rect.width * scale));
-    const height = Math.min(size.height - y, Math.round(rect.height * scale));
+    const displayId = String((rect && rect.displayId) || '');
+    const shot =
+      captureShots.get(displayId) ||
+      (displayId ? null : captureShots.values().next().value);
+    if (!shot) return null;
+
+    const size = shot.image.getSize();
+    const x = Math.max(0, Math.round(rect.x * shot.scaleX));
+    const y = Math.max(0, Math.round(rect.y * shot.scaleY));
+    const width = Math.min(size.width - x, Math.round(rect.width * shot.scaleX));
+    const height = Math.min(size.height - y, Math.round(rect.height * shot.scaleY));
 
     if (width < 8 || height < 8) return null;
 
-    let image = captureShot.crop({ x, y, width, height });
+    let image = shot.image.crop({ x, y, width, height });
     // Больше 1600 px по ширине vision-модели всё равно ужимают.
     if (image.getSize().width > 1600) image = image.resize({ width: 1600, quality: 'good' });
 
@@ -284,6 +326,7 @@ function createScreenshotService({
   return {
     captureAndSolve,
     warmUp,
+    displayFor: (webContentsId) => captureDisplayBySender.get(webContentsId) || '',
     select: (rect) => {
       if (!rect) {
         finishCapture({ ok: false, cancelled: true });
@@ -291,7 +334,7 @@ function createScreenshotService({
       }
 
       // Снимок может быть ещё не готов — досчитаем, когда он появится.
-      if (!captureShot) {
+      if (!captureShots.size) {
         pendingRect = rect;
         return;
       }
@@ -299,7 +342,7 @@ function createScreenshotService({
       applySelection(rect);
     },
     cancel: () => finishCapture({ ok: false, cancelled: true }),
-    isOpen: () => !!captureWin,
+    isOpen: () => captureWins.length > 0,
   };
 }
 

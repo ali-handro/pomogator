@@ -445,7 +445,7 @@ let resizeTimer = null;
 const RESIZE_MIN_WIDTH = 560;
 const RESIZE_MIN_HEIGHT = 160;
 const RESIZE_MAX_WIDTH = 1600;
-const RESIZE_MAX_HEIGHT = 520;
+const RESIZE_MAX_HEIGHT = 900;
 
 function clampResizeBounds(bounds) {
   const rawX = Math.round(Number(bounds.x) || 0);
@@ -1018,7 +1018,8 @@ function startWheel() {
   startWheelHook({
     isActive: wheelActive,
     onStep: (direction) => {
-      sendToOverlay(`action:${direction < 0 ? 'history-prev' : 'history-next'}`);
+      // Сначала листаем длинный ответ, на краю — историю. Решает рендерер.
+      sendToOverlay(`action:${direction < 0 ? 'scroll-up' : 'scroll-down'}`);
       // Renderer мог получить то же колесо — гасим повтор.
       sendToOverlay('overlay:wheel-consumed');
     },
@@ -1097,7 +1098,9 @@ function startHoverWatch() {
       p.y >= b.y + answerRegion.y &&
       p.y <= b.y + answerRegion.y + answerRegion.height
     );
-    const inside = inHeader || nearEdge || inAnswer;
+    // Текст ответа оставляем сквозным для мыши: колесо над ним ловит
+    // глобальный хук, а клики должны проходить в приложение под оверлеем.
+    const inside = inHeader || nearEdge;
 
     // В режиме суфлёра окно не в фокусе, поэтому стрелки над текстом
     // перехватываем глобально, пока курсор там.
@@ -1746,7 +1749,9 @@ function registerIpc() {
   });
 
   // Выделение области на снимке экрана
-  ipcMain.on('capture:select', (_event, rect) => screenshots.select(rect));
+  ipcMain.on('capture:select', (event, rect) => {
+    screenshots.select({ ...rect, displayId: screenshots.displayFor(event.sender.id) });
+  });
   ipcMain.on('capture:cancel', () => screenshots.cancel());
 
   ipcMain.handle('vision:capture', async (_event, payload) => {
