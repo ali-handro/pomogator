@@ -1293,9 +1293,13 @@ async function boot() {
     }
   }
 
+  // Оверлей стартует на паузе: прослушивание включает сам пользователь.
+  stt.pausedByUser = true;
+  setListening(false, true);
+
   applySettings();
   await ensureSource();
-  setListening(settings.listen !== false, true);
+  setListening(false, true);
   applySettings();
 
   refreshCloudBalance();

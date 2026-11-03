@@ -433,6 +433,18 @@ select {
   color: var(--text);
 }
 
+.interview-btn {
+  color: #0b0f16;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+}
+
+.interview-btn:hover {
+  color: #0b0f16;
+  border-color: transparent;
+  filter: brightness(1.06);
+}
+
 .test-btn:disabled {
   cursor: default;
   opacity: 0.55;

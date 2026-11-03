@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
   onWheelConsumed: (cb) => subscribe('overlay:wheel-consumed', cb),
   hideOverlay: () => ipcRenderer.send('overlay:hide'),
   openSettings: () => ipcRenderer.send('settings:open'),
+  openOverlay: () => ipcRenderer.send('overlay:open'),
   openTrainer: () => ipcRenderer.send('trainer:open'),
   openQuiz: () => ipcRenderer.send('quiz:open'),
   openMeeting: () => ipcRenderer.send('meeting:open'),

@@ -115,7 +115,7 @@ const DEFAULT_SETTINGS = {
   },
   localSttModel: 'base',
   autoAnswer: true,
-  listen: true,
+  listen: false,
   silenceMs: 450,
   cloudMode: false,
   hotkeys: {
@@ -1906,6 +1906,12 @@ function registerIpc() {
     if (overlayWin && !overlayWin.isDestroyed()) overlayWin.hide();
   });
 
+  ipcMain.on('overlay:open', () => {
+    if (!overlayWin || overlayWin.isDestroyed()) return;
+    overlayWin.show();
+    overlayWin.moveTop();
+  });
+
   // Область текста ответа для перехвата колеса мыши в режиме суфлёра.
   ipcMain.on('overlay:answer-region', (_event, region) => {
     if (
@@ -2078,13 +2084,8 @@ app.whenReady().then(() => {
     // Прогрев не должен мешать старту — даём окну подняться.
     setTimeout(warmUp, 1500);
 
-    // Без ключа приложение бесполезно — сразу открываем настройки,
-    // чтобы не искать иконку в трее.
-    const setup = needsSetup();
-    if (setup || process.argv.includes('--settings')) {
-      console.log('[boot] opening settings');
-      setTimeout(createSettings, setup ? 1200 : 0);
-    }
+    // Приложение всегда стартует с настроек — оттуда открывается собеседование.
+    setTimeout(createSettings, 700);
 
     screen.on('display-metrics-changed', onDisplaysChanged);
     screen.on('display-added', onDisplaysChanged);

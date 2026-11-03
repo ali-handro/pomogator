@@ -1070,6 +1070,10 @@ function bind() {
     }
   });
 
+  $('interviewBtn').addEventListener('click', () => {
+    if (hasApi) window.api.openOverlay();
+  });
+
   $('trainerBtn').addEventListener('click', () => {
     if (hasApi) window.api.openTrainer();
   });
