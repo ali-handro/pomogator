@@ -463,6 +463,7 @@ function renderAccountState() {
   if (connectionCard) connectionCard.hidden = loggedIn && !!settings.cloudMode;
 
   refreshCloudQuote();
+  renderStt();
 }
 
 async function refreshCloudQuote() {
@@ -553,6 +554,7 @@ function fill() {
 function renderStt() {
   const stt = settings.stt || {};
   const local = stt.mode === 'local';
+  const cloud = !!settings.cloudMode && !!(accountState && accountState.loggedIn);
 
   if ($('sttMode')) $('sttMode').value = local ? 'local' : 'api';
   if ($('sttFormat')) $('sttFormat').value = stt.format === 'cloudflare' ? 'cloudflare' : 'openai';
@@ -562,18 +564,30 @@ function renderStt() {
   if ($('sttModelInput')) $('sttModelInput').value = stt.model || '';
   if ($('sttLanguage')) $('sttLanguage').value = stt.language || 'ru';
 
+  const modeField = $('sttModeField');
+  if (modeField) modeField.hidden = cloud;
+
+  const note = $('sttCloudNote');
+  if (note) note.hidden = !cloud;
+
   const apiBlock = $('sttApiBlock');
-  if (apiBlock) apiBlock.hidden = local;
+  if (apiBlock) apiBlock.hidden = cloud || local;
 
   const localBlock = $('sttLocalBlock');
-  if (localBlock) localBlock.hidden = !local;
+  if (localBlock) localBlock.hidden = cloud || !local;
+
+  const testRow = $('sttTestRow');
+  if (testRow) testRow.hidden = cloud;
+
+  const hint = $('sttHint');
+  if (hint) hint.hidden = cloud;
 
   const localModel = $('localSttModel');
   if (localModel) localModel.value = settings.localSttModel === 'small' ? 'small' : 'base';
 
   syncAllSelects();
 
-  if (local) refreshLocalStatus();
+  if (local && !cloud) refreshLocalStatus();
 }
 
 async function refreshLocalStatus() {
@@ -604,12 +618,37 @@ async function refreshLocalStatus() {
   }
 }
 
+let lastSaved = null;
+
+function snapshot(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+function buildPatch() {
+  const base = lastSaved || {};
+  const patch = {};
+
+  for (const key of Object.keys(settings)) {
+    if (JSON.stringify(settings[key]) !== JSON.stringify(base[key])) {
+      patch[key] = settings[key];
+    }
+  }
+
+  return patch;
+}
+
 function scheduleSave() {
   clearTimeout(saveTimer);
+
   saveTimer = setTimeout(async () => {
     if (!hasApi) return;
+
+    const patch = buildPatch();
+    if (!Object.keys(patch).length) return;
+
     try {
-      settings = await window.api.saveSettings(settings);
+      settings = await window.api.saveSettings(patch);
+      lastSaved = snapshot(settings);
       showToast();
     } catch (err) {
       console.error('[settings] save failed', err);
@@ -808,7 +847,14 @@ function bind() {
     try {
       // Сохраняем введённое сразу, чтобы проверка видела свежие ключи.
       clearTimeout(saveTimer);
-      if (hasApi) settings = await window.api.saveSettings(settings);
+
+      if (hasApi) {
+        const patch = buildPatch();
+        if (Object.keys(patch).length) {
+          settings = await window.api.saveSettings(patch);
+          lastSaved = snapshot(settings);
+        }
+      }
 
       const result = await window.api.testConnection();
       if (result && result.ok) {
@@ -862,7 +908,7 @@ function bind() {
         }
       }
 
-      refreshCloudQuote();
+      renderAccountState();
     });
   }
 
@@ -1001,6 +1047,7 @@ async function boot() {
   if (hasApi) {
     try {
       settings = await window.api.getSettings();
+      lastSaved = snapshot(settings);
       settings.keys = settings.keys || {};
       displays = await window.api.getDisplays();
 
@@ -1031,6 +1078,7 @@ async function boot() {
               'sttLanguage',
             ].includes(active.id));
         settings = next;
+        lastSaved = snapshot(next);
         settings.keys = settings.keys || {};
         renderHotkeys();
         if (!editing && !capturingHotkey) fill();

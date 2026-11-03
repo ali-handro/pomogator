@@ -203,13 +203,19 @@
             <input type="range" id="silenceMs" data-key="silenceMs" min="400" max="1600" step="50" />
           </label>
 
-          <label class="field">
+          <label class="field" id="sttModeField">
             <span class="label">Распознавание речи</span>
             <select id="sttMode">
-              <option value="api">По API — нужен интернет</option>
+              <option value="api">Свой API — ввести адрес и ключ</option>
               <option value="local">Локально (whisper.cpp) — без интернета</option>
             </select>
           </label>
+
+          <div class="cloud-note" id="sttCloudNote" hidden>
+            <b>Звук идёт через облако Помогатора.</b>
+            Ключи и адреса не нужны: распознавание и ответы идут через наш сервер,
+            минуты списываются с баланса.
+          </div>
 
           <div id="sttApiBlock">
             <label class="field">
@@ -303,15 +309,15 @@
             </div>
           </div>
 
-          <div class="test-row">
+          <div class="test-row" id="sttTestRow">
             <button type="button" class="ghost test-btn" id="sttTestBtn">
               Проверить распознавание
             </button>
             <span class="test-result" id="sttTestResult"></span>
           </div>
 
-          <span class="hint">
-            В облачном режиме аудио уходит на Cloudflare только когда вы говорите.
+          <span class="hint" id="sttHint">
+            В режиме «Свой API» аудио уходит на указанный сервер только когда вы говорите.
             В локальном режиме ничего никуда не отправляется — распознавание идёт
             на вашем компьютере.
           </span>
