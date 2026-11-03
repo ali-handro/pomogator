@@ -576,10 +576,11 @@ function createOverlay() {
   overlayWin.loadFile(path.join(__dirname, 'renderer', 'overlay.html'));
 
   overlayWin.once('ready-to-show', () => {
-    if (!settings.startHidden) overlayWin.showInactive();
+    // На холодном старте показываем только настройки. Оверлей открывают
+    // кнопка «Собеседование», трей или горячая клавиша.
     applyClickThrough();
     applyCaptureProtection();
-    console.log('[overlay] visible', overlayWin.isVisible(), 'bounds', JSON.stringify(overlayWin.getBounds()));
+    console.log('[overlay] ready, hidden until opened');
     if (isDev) {
       console.log('[overlay] bounds', JSON.stringify(overlayWin.getBounds()));
       console.log('[overlay] workArea', JSON.stringify(screen.getPrimaryDisplay().workArea));
@@ -1908,8 +1909,12 @@ function registerIpc() {
 
   ipcMain.on('overlay:open', () => {
     if (!overlayWin || overlayWin.isDestroyed()) return;
+
     overlayWin.show();
     overlayWin.moveTop();
+
+    // Перешли в собеседование — настройки больше не мешают.
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.hide();
   });
 
   // Область текста ответа для перехвата колеса мыши в режиме суфлёра.
