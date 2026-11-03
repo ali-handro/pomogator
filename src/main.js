@@ -1039,9 +1039,29 @@ function auxFocused() {
 function startHoverWatch() {
   if (hoverTimer) return;
 
+  let lastCursor = null;
+
   hoverTimer = setInterval(() => {
     if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) return;
     if (customResizing) return;
+
+    // Держим захват экрана тёплым, пока курсор двигается над оверлеем:
+    // иначе первый снимок после простоя снова ждёт композитор 2 секунды.
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = overlayWin.getBounds();
+    const moved =
+      !lastCursor || lastCursor.x !== cursor.x || lastCursor.y !== cursor.y;
+    lastCursor = cursor;
+
+    if (
+      moved &&
+      cursor.x >= bounds.x &&
+      cursor.x <= bounds.x + bounds.width &&
+      cursor.y >= bounds.y &&
+      cursor.y <= bounds.y + bounds.height
+    ) {
+      screenshots.warmUp();
+    }
 
     // Пока пользователь работает с настройками, не трогаем перехват мыши:
     // переключения прозрачности на ходу заставляют окна перерисовываться.

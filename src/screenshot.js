@@ -43,6 +43,7 @@ function createScreenshotService({
   let captureDisplayBySender = new Map();
   let captureResolve = null;
   let pendingRect = null;
+  let captureRevealed = false;
   let warming = null;
   let lastWarmAt = 0;
 
@@ -54,7 +55,7 @@ function createScreenshotService({
     if (warming) return warming;
 
     const now = Date.now();
-    if (now - lastWarmAt < 8000) return undefined;
+    if (now - lastWarmAt < 12000) return undefined;
     lastWarmAt = now;
 
     warming = desktopCapturer
@@ -79,13 +80,14 @@ function createScreenshotService({
     captureWins = [];
     captureShots = new Map();
     captureDisplayBySender = new Map();
+    captureRevealed = false;
 
     if (resolve) resolve(result);
   }
 
   /**
-   * Выделение показываем на всех экранах сразу. Снимок каждого экрана
-   * делается параллельно, поэтому второе окно выделения тоже работает.
+   * Выделение показываем на всех экранах сразу. Снимок делается до показа
+   * окон: иначе видео в аппаратном оверлее (YouTube, плееры) сереет.
    */
   async function captureArea() {
     if (captureWins.length) return { ok: false, cancelled: true };
@@ -97,6 +99,7 @@ function createScreenshotService({
       captureResolve = resolve;
     });
 
+    captureRevealed = false;
     const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 
     for (const display of displays) {
@@ -140,6 +143,7 @@ function createScreenshotService({
         }
 
         captureShots = shots;
+        revealCaptureWindows();
 
         if (pendingRect) {
           const rect = pendingRect;
@@ -152,6 +156,24 @@ function createScreenshotService({
       });
 
     return selection;
+  }
+
+  function revealCaptureWindow(win) {
+    if (win.isDestroyed() || win.isVisible()) return;
+
+    if (win.__focus) {
+      win.show();
+      win.focus();
+    } else {
+      win.showInactive();
+    }
+  }
+
+  function revealCaptureWindows() {
+    captureRevealed = true;
+    for (const win of captureWins) {
+      if (win.__ready) revealCaptureWindow(win);
+    }
   }
 
   function createCaptureWindow(display, cursorDisplay) {
@@ -177,6 +199,7 @@ function createScreenshotService({
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        backgroundThrottling: false,
       },
     });
 
@@ -189,21 +212,21 @@ function createScreenshotService({
       /* защита недоступна */
     }
 
+    win.__focus = String(display.id) === String(cursorDisplay.id);
+    win.__ready = false;
+
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setMenuBarVisibility(false);
     win.loadFile(path.join(__dirname, 'renderer', 'capture.html'));
 
-    win.once('ready-to-show', () => {
+    win.webContents.once('did-finish-load', () => {
       if (win.isDestroyed()) return;
 
-      // Фокус оставляем на экране, где сейчас курсор: Esc должен работать
-      // там, где пользователь начал выделение.
-      if (String(display.id) === String(cursorDisplay.id)) {
-        win.show();
-        win.focus();
-      } else {
-        win.showInactive();
-      }
+      win.__ready = true;
+
+      // Пока не сделан снимок, окно не показываем: иначе аппаратный
+      // оверлей видео (YouTube) попадает в кадр серым прямоугольником.
+      if (captureRevealed) revealCaptureWindow(win);
     });
 
     win.on('closed', () => {
