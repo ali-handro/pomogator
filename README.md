@@ -44,13 +44,36 @@ npm run dev
 npm run build
 ```
 
-Артефакт: `dist/Pomogator-<версия>.exe`.
+Артефакты:
+
+- `dist/Pomogator-Setup-<версия>.exe` — установщик;
+- `dist/Pomogator-<версия>.exe` — portable-версия.
 
 Релиз с повышением версии, копией на рабочий стол и тегом:
 
 ```powershell
 npm run release minor
 ```
+
+## Обновления
+
+Проверка идёт по статическому JSON. Укажите адрес в `src/config.js`:
+
+```js
+updatesUrl: 'https://example.com/pomogator-updates.json',
+```
+
+Формат файла:
+
+```json
+{
+  "version": "0.26.1",
+  "url": "https://example.com/Pomogator-Setup-0.26.1.exe",
+  "notes": "Что нового"
+}
+```
+
+Сервер не нужен: файл можно положить на GitHub Pages или в релизы.
 
 ## Поддержка и обратная связь
 

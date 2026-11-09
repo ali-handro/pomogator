@@ -71,6 +71,66 @@ const STT_MODEL_PRESETS = {
 let aiModelsCache = [];
 let sttModelsCache = [];
 
+const SETUP_PROVIDERS = [
+  {
+    id: 'opencode',
+    name: 'OpenCode Go',
+    baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    models: ['glm-5.3-flash', 'deepseek-v4.1-flash', 'qwen3.8-flash', 'kimi-k3'],
+    key: true,
+    account: false,
+    stt: 'none',
+    note: 'Ключ: opencode.ai/console',
+  },
+  {
+    id: 'cloudflare',
+    name: 'Cloudflare',
+    baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1',
+    models: [
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      '@cf/openai/gpt-oss-120b',
+      '@cf/qwen/qwen3.8-27b',
+    ],
+    key: true,
+    account: true,
+    stt: 'cloudflare',
+    note: 'Ключ и Account ID: dash.cloudflare.com',
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    models: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.6-27b'],
+    key: true,
+    account: false,
+    stt: 'groq',
+    note: 'Ключ: console.groq.com/keys',
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+    key: true,
+    account: false,
+    stt: 'none',
+    note: 'Ключ: platform.deepseek.com',
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama',
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    models: ['qwen2.5:7b', 'llama3.1:8b', 'gemma3:4b'],
+    key: false,
+    account: false,
+    stt: 'none',
+    note: 'Локально, без ключа. Модель должна быть скачана в Ollama.',
+  },
+];
+
+let setupProvider = SETUP_PROVIDERS[0];
+let setupBusy = false;
+
 function fillModelSelect(select, current, list) {
   if (!select) return;
 
@@ -412,8 +472,234 @@ function renderHotkeyStatus(status) {
   applyHotkeyStatus();
 }
 
-function renderSupport() {
-  const donate = $('donateBtn');
+/* ---------- быстрая настройка ---------- */
+
+function renderSetupProviders() {
+  const box = $('setupProviders');
+  if (!box) return;
+
+  box.innerHTML = '';
+
+  for (const preset of SETUP_PROVIDERS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'amount';
+    button.textContent = preset.name;
+    if (preset.id === setupProvider.id) button.classList.add('active');
+    button.addEventListener('click', () => applySetupProvider(preset));
+    box.appendChild(button);
+  }
+}
+
+function setupModelValue() {
+  const select = $('setupModel');
+  if (select && select.value === '__custom__') return $('setupModelInput').value.trim();
+  return select ? select.value : '';
+}
+
+function setSetupModel(value) {
+  const select = $('setupModel');
+  const input = $('setupModelInput');
+  if (!select || !input) return;
+
+  select.innerHTML = '';
+  const values = setupProvider.models || [];
+
+  for (const model of values) {
+    const option = document.createElement('option');
+    option.value = model;
+    option.textContent = model;
+    select.appendChild(option);
+  }
+
+  const custom = document.createElement('option');
+  custom.value = '__custom__';
+  custom.textContent = values.length ? 'Другая модель…' : 'Ввести модель';
+  select.appendChild(custom);
+
+  const known = values.includes(value);
+  select.value = known ? value : '__custom__';
+  input.hidden = known;
+  input.value = known ? '' : value || '';
+  if (!known) input.focus();
+}
+
+function applySetupProvider(preset) {
+  setupProvider = preset;
+
+  renderSetupProviders();
+
+  const accountRow = $('setupAccountRow');
+  if (accountRow) accountRow.hidden = !preset.account;
+
+  const keyRow = $('setupKeyRow');
+  if (keyRow) keyRow.hidden = !preset.key;
+
+  const sttRow = $('setupSttRow');
+  if (sttRow) sttRow.hidden = !preset.stt || preset.stt === 'none';
+
+  const sttCheckbox = $('setupStt');
+  if (sttCheckbox) sttCheckbox.checked = true;
+
+  const sttLabel = sttRow && sttRow.querySelector('span');
+  if (sttLabel) {
+    sttLabel.textContent =
+      preset.stt === 'cloudflare'
+        ? 'Настроить распознавание через Cloudflare этим же ключом'
+        : 'Настроить распознавание через Groq этим же ключом';
+  }
+
+  // Подставляем текущие значения, если они относятся к этому провайдеру.
+  const currentAi = settings.ai || {};
+  const same = currentAi.baseUrl === preset.baseUrl;
+
+  if ($('setupKey')) $('setupKey').value = same ? (settings.keys && settings.keys.ai) || '' : '';
+  if ($('setupAccount')) $('setupAccount').value = same ? currentAi.accountId || '' : '';
+
+  const model = same ? currentAi.model || '' : preset.models[0] || '';
+  setSetupModel(model);
+
+  if ($('setupHint')) $('setupHint').textContent = preset.note || '';
+}
+
+function openSetup() {
+  const modal = $('setupModal');
+  if (!modal) return;
+
+  const currentBase = String((settings.ai && settings.ai.baseUrl) || '');
+  const matched = SETUP_PROVIDERS.find((preset) => preset.baseUrl === currentBase);
+
+  applySetupProvider(matched || SETUP_PROVIDERS[0]);
+  modal.hidden = false;
+
+  setTimeout(() => {
+    if ($('setupKey') && !$('setupKeyRow').hidden) $('setupKey').focus();
+  }, 60);
+}
+
+function closeSetup() {
+  if ($('setupModal')) $('setupModal').hidden = true;
+}
+
+async function applySetup() {
+  if (setupBusy) return;
+
+  const hint = $('setupHint');
+  const button = $('setupApply');
+  const key = ($('setupKey') ? $('setupKey').value : '').trim();
+  const accountId = ($('setupAccount') ? $('setupAccount').value : '').trim();
+  const model = setupModelValue();
+
+  const fail = (message) => {
+    if (hint) hint.textContent = message;
+  };
+
+  if (setupProvider.account && !accountId) return fail('Укажите Account ID.');
+  if (setupProvider.key && !key) return fail('Вставьте API-ключ.');
+  if (!model) return fail('Выберите или введите модель.');
+
+  setupBusy = true;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Проверяю…';
+  }
+  if (hint) hint.textContent = 'Сохраняю и проверяю подключение…';
+
+  try {
+    const ai = {
+      baseUrl: setupProvider.baseUrl,
+      accountId: setupProvider.account ? accountId : '',
+      model,
+    };
+
+    const keys = { ...(settings.keys || {}), ai: key };
+
+    const patch = { ai, keys };
+
+    const wantStt = !$('setupSttRow').hidden && $('setupStt').checked;
+
+    if (wantStt && setupProvider.stt === 'cloudflare') {
+      patch.stt = {
+        mode: 'api',
+        format: 'cloudflare',
+        baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run',
+        accountId,
+        model: '@cf/openai/whisper-large-v3-turbo',
+        language: 'ru',
+      };
+      keys.stt = key;
+    } else if (wantStt && setupProvider.stt === 'groq') {
+      patch.stt = {
+        mode: 'api',
+        format: 'openai',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        accountId: '',
+        model: 'whisper-large-v3-turbo',
+        language: 'ru',
+      };
+      keys.stt = key;
+    } else if (!(settings.keys && settings.keys.stt)) {
+      // Провайдер не умеет распознавание — оставляем рабочий локальный режим.
+      patch.stt = { ...(settings.stt || {}), mode: 'local' };
+    }
+
+    settings = await window.api.saveSettings(patch);
+
+    const result = await window.api.testConnection();
+    if (!result || !result.ok) {
+      fail((result && result.error) || 'Модель не ответила. Проверьте ключ и модель.');
+      return;
+    }
+
+    if (hint) hint.textContent = 'Готово — модель отвечает.';
+    closeSetup();
+    fill();
+  } catch (err) {
+    fail(err.message);
+  } finally {
+    setupBusy = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Проверить и сохранить';
+    }
+  }
+}
+
+async function checkUpdates() {
+  const hint = $('updateHint');
+  const button = $('checkUpdatesBtn');
+  if (!hasApi || !window.api.checkUpdates) return;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Проверяю…';
+  }
+  if (hint) hint.textContent = 'Проверяю обновления…';
+
+  try {
+    const result = await window.api.checkUpdates();
+
+    if (result && result.skipped) {
+      if (hint) hint.textContent = 'Обновления пока не настроены.';
+    } else if (result && result.update) {
+      if (hint) {
+        hint.textContent = `Доступна версия ${result.update.version}. Открываю страницу загрузки…`;
+      }
+      if (result.update.url) window.api.openExternal(result.update.url);
+    } else {
+      if (hint) hint.textContent = 'У вас последняя версия.';
+    }
+  } catch (err) {
+    if (hint) hint.textContent = err.message || 'Не удалось проверить обновления.';
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Проверить обновления';
+    }
+  }
+}
+
+function renderSupport() {  const donate = $('donateBtn');
   const feedback = $('feedbackBtn');
   const hint = $('supportHint');
 
@@ -884,6 +1170,34 @@ function bind() {
     if (hasApi) window.api.openQuiz();
   });
 
+  const quickSetupBtn = $('quickSetupBtn');
+  if (quickSetupBtn) quickSetupBtn.addEventListener('click', openSetup);
+
+  const setupCloseBtn = $('setupClose');
+  if (setupCloseBtn) setupCloseBtn.addEventListener('click', closeSetup);
+
+  const setupApplyBtn = $('setupApply');
+  if (setupApplyBtn) setupApplyBtn.addEventListener('click', applySetup);
+
+  const setupModal = $('setupModal');
+  if (setupModal) {
+    setupModal.addEventListener('click', (event) => {
+      if (event.target === setupModal) closeSetup();
+    });
+  }
+
+  const setupModel = $('setupModel');
+  if (setupModel) {
+    setupModel.addEventListener('change', () => {
+      const custom = setupModel.value === '__custom__';
+      $('setupModelInput').hidden = !custom;
+      if (custom) $('setupModelInput').focus();
+    });
+  }
+
+  const checkUpdatesBtn = $('checkUpdatesBtn');
+  if (checkUpdatesBtn) checkUpdatesBtn.addEventListener('click', checkUpdates);
+
   $('sttTestBtn').addEventListener('click', async () => {
     const btn = $('sttTestBtn');
     const out = $('sttTestResult');
@@ -912,6 +1226,11 @@ function bind() {
   });
 
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && $('setupModal') && !$('setupModal').hidden) {
+      closeSetup();
+      return;
+    }
+
     if (event.key === 'Escape' && !capturingHotkey) window.close();
   });
 }
@@ -977,6 +1296,11 @@ async function boot() {
   enhanceSelects();
   fill();
   bind();
+
+  const ai = settings.ai || {};
+  if (!ai.baseUrl || !ai.model) {
+    setTimeout(openSetup, 250);
+  }
 }
 
 window.addEventListener('DOMContentLoaded', boot);

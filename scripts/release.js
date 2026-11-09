@@ -39,7 +39,7 @@ run('npm', ['run', 'build']);
 
 const artifact = path.join(ROOT, 'dist', `${productName}-${version}.exe`);
 if (!fs.existsSync(artifact)) {
-  console.error('Не найден артефакт сборки:', artifact);
+  console.error('Не найден portable-артефакт сборки:', artifact);
   process.exit(1);
 }
 
@@ -47,6 +47,14 @@ const desktop = path.join(process.env.USERPROFILE || '', 'Desktop');
 const target = path.join(desktop, `${productName}-${version}.exe`);
 fs.copyFileSync(artifact, target);
 console.log('\nСкопировано на рабочий стол:', target);
+
+// Установщик тоже кладём рядом — его удобнее отправлять пользователям.
+const setup = path.join(ROOT, 'dist', `${productName}-Setup-${version}.exe`);
+if (fs.existsSync(setup)) {
+  const setupTarget = path.join(desktop, `${productName}-Setup-${version}.exe`);
+  fs.copyFileSync(setup, setupTarget);
+  console.log('Установщик на рабочем столе:', setupTarget);
+}
 
 // Уборка мусора после сборки и тестовых запусков.
 cleanup();

@@ -56,7 +56,10 @@
         </section>
 
         <section class="card" id="connectionCard">
-          <h2>Модель</h2>
+          <h2>
+            Модель
+            <button type="button" class="link" id="quickSetupBtn">быстрая настройка</button>
+          </h2>
 
           <label class="field">
             <span class="label">Адрес API</span>
@@ -402,12 +405,70 @@
             Если комбинацию заняла другая программа, строка подсветится красным.
           </span>
         </section>
+
+        <section class="card">
+          <h2>О программе</h2>
+          <div class="about-row">
+            <span class="hint" id="updateHint">Проверка обновлений</span>
+            <button type="button" class="ghost test-btn" id="checkUpdatesBtn">
+              Проверить обновления
+            </button>
+          </div>
+        </section>
       </main>
 
       <footer class="foot">
         <span class="saved" id="saved">Сохранено</span>
         <span class="foot-note">Изменения применяются сразу</span>
       </footer>
+    </div>
+
+    <div class="modal" id="setupModal" hidden>
+      <div class="modal-card setup-card">
+        <header class="modal-head">
+          <span>Быстрая настройка</span>
+          <button type="button" class="ghost test-btn" id="setupClose" title="Закрыть">✕</button>
+        </header>
+
+        <p class="modal-note">
+          Выберите провайдера и вставьте ключ. Всё хранится только на этом компьютере.
+          Настройки можно изменить позже.
+        </p>
+
+        <div class="setup-providers" id="setupProviders"></div>
+
+        <label class="field" id="setupAccountRow" hidden>
+          <span class="label">Account ID</span>
+          <input type="text" id="setupAccount" spellcheck="false" autocomplete="off" />
+        </label>
+
+        <label class="field" id="setupKeyRow">
+          <span class="label">API-ключ</span>
+          <input
+            type="password"
+            id="setupKey"
+            placeholder="вставьте ключ провайдера"
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </label>
+
+        <label class="field">
+          <span class="label">Модель</span>
+          <select id="setupModel"></select>
+          <input type="text" id="setupModelInput" placeholder="имя модели" hidden />
+        </label>
+
+        <label class="check" id="setupSttRow">
+          <input type="checkbox" id="setupStt" checked />
+          <span>Настроить распознавание этим же ключом</span>
+        </label>
+
+        <button type="button" class="primary modal-pay" id="setupApply">
+          Проверить и сохранить
+        </button>
+        <span class="hint" id="setupHint"></span>
+      </div>
     </div>
 
     <script src="select.js"></script>

@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('api', {
   localSttCancel: () => ipcRenderer.invoke('localStt:cancel'),
   onLocalSttProgress: (cb) => subscribe('localStt:progress', cb),
   testConnection: () => ipcRenderer.invoke('llm:test'),
+  checkUpdates: () => ipcRenderer.invoke('updates:check'),
   listModels: (kind) => ipcRenderer.invoke('models:list', kind),
 
   /* системное */

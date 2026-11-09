@@ -805,6 +805,29 @@ kbd {
   margin-top: 10px;
 }
 
+.setup-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.setup-providers .amount {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.setup-card .field {
+  margin-top: 10px;
+}
+
+.about-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 /* ---------- узкое окно ---------- */
 
 @media (max-width: 680px) {

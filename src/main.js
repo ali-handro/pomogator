@@ -27,6 +27,7 @@ const { createHotkeys } = require('./hotkeys');
 const { createScreenshotService } = require('./screenshot');
 const { createMeetingStore } = require('./meeting-store');
 const appConfig = require('./config');
+const { checkForUpdates, checkAndNotify } = require('./updater');
 const { buildMessages } = require('./prompt');
 
 const APP_ROOT = path.join(__dirname, '..');
@@ -1493,6 +1494,8 @@ function registerIpc() {
 
   ipcMain.handle('providers:get', () => PROVIDERS);
 
+  ipcMain.handle('updates:check', () => checkForUpdates());
+
   ipcMain.handle('llm:test', async () => {
     const ai = aiConfig();
 
@@ -2039,6 +2042,8 @@ app.whenReady().then(() => {
 
     // Приложение всегда стартует с настроек — оттуда открывается собеседование.
     setTimeout(createSettings, 700);
+
+    if (appConfig.updatesUrl) setTimeout(checkAndNotify, 10000);
 
     screen.on('display-metrics-changed', onDisplaysChanged);
     screen.on('display-added', onDisplaysChanged);
