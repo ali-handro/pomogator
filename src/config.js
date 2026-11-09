@@ -15,5 +15,5 @@
 module.exports = {
   donateUrl: 'https://pay.cloudtips.ru/p/17b6f1f4',
   feedbackUrl: 'https://t.me/Alex_sndr',
-  updatesUrl: '',
+  updatesUrl: 'https://github.com/ali-handro/pomogator/releases/latest/download/updates.json',
 };

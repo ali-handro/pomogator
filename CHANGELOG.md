@@ -2,6 +2,14 @@
 
 Все заметные изменения проекта. Версии — по semver: `major.minor.patch`.
 
+## 0.27.1 — 2026-11-09
+
+### Обновления через GitHub
+- Проверка обновлений подключена к GitHub Releases:
+  `https://github.com/ali-handro/pomogator/releases/latest/download/updates.json`.
+- Проект опубликован: https://github.com/ali-handro/pomogator
+- Первый релиз с установщиком, portable-версией и `updates.json`.
+
 ## 0.27.0 — 2026-11-09
 
 ### Диагностика
