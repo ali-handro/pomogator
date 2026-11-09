@@ -1,0 +1,86 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Тесты
+        run: npm test
+
+      - name: Сборка
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build
+
+      - name: Контрольные суммы
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $files = @(
+            "dist/Pomogator-Setup-$version.exe",
+            "dist/Pomogator-$version.exe"
+          )
+          $lines = foreach ($file in $files) {
+            if (-not (Test-Path $file)) { throw "Не найден файл: $file" }
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+            "$hash  $(Split-Path $file -Leaf)"
+          }
+          $lines | Set-Content dist/SHA256.txt -Encoding ascii
+          Get-Content dist/SHA256.txt
+
+      - name: updates.json
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          $data = @{
+            version = $version
+            url = "https://github.com/${{ github.repository }}/releases/download/$tag/Pomogator-Setup-$version.exe"
+            notes = "Версия $version"
+          }
+          $json = $data | ConvertTo-Json
+          [System.IO.File]::WriteAllText(
+            (Join-Path $PWD 'dist/updates.json'),
+            $json,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+          Get-Content dist/updates.json
+
+      - name: Публикация релиза
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          $files = @(
+            "dist/Pomogator-Setup-$version.exe",
+            "dist/Pomogator-$version.exe",
+            "dist/updates.json",
+            "dist/SHA256.txt"
+          )
+          gh release create $tag @files --title "Помогатор $version" --notes "Версия $version"

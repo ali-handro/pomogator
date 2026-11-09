@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Помогатор — бесплатный суфлёр для собеседований</title>
+    <meta
+      name="description"
+      content="Бесплатный оверлей для собеседований и созвонов: распознавание речи, ответы модели, скриншоты задач, запись встреч. Без регистрации и облака."
+    />
+    <meta name="theme-color" content="#0b0f16" />
+    <meta property="og:title" content="Помогатор — бесплатный суфлёр для собеседований" />
+    <meta
+      property="og:description"
+      content="Распознаёт вопрос и показывает короткий ответ в оверлее. Не попадает в скриншоты и демонстрацию экрана."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="assets/overlay.png" />
+    <link rel="icon" href="assets/icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-head">
+      <a class="brand" href="./">
+        <img src="assets/icon.png" alt="" width="36" height="36" />
+        <span>Помогатор</span>
+      </a>
+      <nav>
+        <a href="#features">Возможности</a>
+        <a href="#how">Как начать</a>
+        <a href="#download">Скачать</a>
+        <a href="https://github.com/ali-handro/pomogator" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <span class="eyebrow">Бесплатно · без регистрации · Windows 10/11</span>
+          <h1>Подсказки на собеседовании,<br />которые не видно на экране</h1>
+          <p>
+            Помогатор слушает вопрос, распознаёт речь и показывает короткий ответ
+            в оверлее. Оверлей не попадает в скриншоты и демонстрацию экрана.
+          </p>
+          <div class="actions">
+            <a
+              class="btn primary"
+              id="downloadSetup"
+              href="https://github.com/ali-handro/pomogator/releases/latest"
+            >
+              Скачать установщик
+            </a>
+            <a
+              class="btn ghost"
+              id="downloadPortable"
+              href="https://github.com/ali-handro/pomogator/releases/latest"
+            >
+              Portable-версия
+            </a>
+          </div>
+          <div class="meta">
+            <span id="versionLabel">Последняя версия</span>
+            <span class="dot">·</span>
+            <a id="shaLink" href="https://github.com/ali-handro/pomogator/releases/latest">
+              SHA256
+            </a>
+            <span class="dot">·</span>
+            <span>Windows 10/11 x64</span>
+          </div>
+        </div>
+
+        <div class="hero-shot">
+          <img src="assets/overlay.png" alt="Оверлей Помогатора с вопросом и ответом" />
+        </div>
+      </section>
+
+      <section class="strip" aria-label="Главное">
+        <span>Без аккаунта</span>
+        <span>Свои API-ключи</span>
+        <span>Локальное распознавание</span>
+        <span>Не видно на скриншотах</span>
+      </section>
+
+      <section id="features" class="section">
+        <div class="section-head">
+          <span class="eyebrow">Возможности</span>
+          <h2>Всё для собеседования и созвона</h2>
+          <p>Один оверлей вместо десяти вкладок. Настройка — за пару минут.</p>
+        </div>
+
+        <div class="features">
+          <article class="feature">
+            <div class="icon">🎧</div>
+            <h3>Распознавание речи</h3>
+            <p>
+              Микрофон или звук системы. Свой API Whisper или локальный whisper.cpp —
+              без обязательного облака.
+            </p>
+          </article>
+
+          <article class="feature">
+            <div class="icon">💬</div>
+            <h3>Короткие ответы</h3>
+            <p>
+              Модель отвечает от первого лица, тремя пунктами. Ответ появляется
+              потоком и сохраняется в историю.
+            </p>
+          </article>
+
+          <article class="feature">
+            <div class="icon">📷</div>
+            <h3>Задача со скриншота</h3>
+            <p>
+              Выделите код на любом мониторе: приложение вырежет область и попросит
+              модель решить задачу или сделать ревью.
+            </p>
+          </article>
+
+          <article class="feature">
+            <div class="icon">📝</div>
+            <h3>Записи встреч</h3>
+            <p>
+              Расшифровка, краткая выжимка и список задач. Всё хранится локально
+              в папке приложения.
+            </p>
+          </article>
+
+          <article class="feature">
+            <div class="icon">🎯</div>
+            <h3>Тренажёр и тесты</h3>
+            <p>
+              Вопросы по Java, QA, Python, SQL, Frontend, Mobile и DevOps.
+              По 100 вопросов в каждом банке.
+            </p>
+          </article>
+
+          <article class="feature">
+            <div class="icon">🔒</div>
+            <h3>Приватность</h3>
+            <p>
+              Нет аккаунта, телеметрии и облака. Ключи шифруются на компьютере,
+              данные уходят только выбранному провайдеру.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="how" class="section split">
+        <div class="split-copy">
+          <span class="eyebrow">Как начать</span>
+          <h2>Три шага до первого ответа</h2>
+
+          <ol class="steps">
+            <li>
+              <span>1</span>
+              <div>
+                <h3>Скачайте и запустите</h3>
+                <p>Установщик создаст ярлык. Portable-версия запускается одним файлом.</p>
+              </div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <h3>Выберите провайдера</h3>
+                <p>
+                  OpenCode Go, Cloudflare, Groq, DeepSeek или локальная Ollama.
+                  Мастер подставит адрес и модель — останется вставить ключ.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <h3>Нажмите «Собеседование»</h3>
+                <p>
+                  Оверлей появится на экране. Вопросы распознаются сами,
+                  ответы печатаются в реальном времени.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="split-shot">
+          <img src="assets/settings.png" alt="Настройки Помогатора" />
+        </div>
+      </section>
+
+      <section id="download" class="section">
+        <div class="section-head">
+          <span class="eyebrow">Скачать</span>
+          <h2>Выберите версию</h2>
+          <p>Обе версии бесплатны и работают одинаково. Разница только в установке.</p>
+        </div>
+
+        <div class="downloads">
+          <article class="download recommended">
+            <span class="badge">Рекомендуем</span>
+            <h3>Установщик</h3>
+            <p>
+              Создаёт ярлыки, ставится в профиль пользователя. Удобнее для
+              повседневного использования.
+            </p>
+            <a
+              class="btn primary"
+              id="downloadSetup2"
+              href="https://github.com/ali-handro/pomogator/releases/latest"
+            >
+              Скачать Setup
+            </a>
+          </article>
+
+          <article class="download">
+            <span class="badge muted">Без установки</span>
+            <h3>Portable</h3>
+            <p>
+              Один exe. Запускается сразу, ничего не устанавливает. Обновление —
+              замена файла вручную.
+            </p>
+            <a
+              class="btn ghost"
+              id="downloadPortable2"
+              href="https://github.com/ali-handro/pomogator/releases/latest"
+            >
+              Скачать Portable
+            </a>
+          </article>
+        </div>
+
+        <p class="note">
+          Файлы пока не подписаны сертификатом, поэтому SmartScreen может
+          предупредить. Нажмите «Подробнее» → «Выполнить в любом случае».
+          Целостность можно проверить по
+          <a id="shaLink2" href="https://github.com/ali-handro/pomogator/releases/latest">
+            SHA256
+          </a>.
+        </p>
+      </section>
+
+      <section class="section support">
+        <div>
+          <span class="eyebrow">Поддержать проект</span>
+          <h2>Приложение бесплатное</h2>
+          <p>
+            Донат не даёт дополнительных функций и ничего не ограничивает.
+            Если Помогатор помогает — можно отблагодарить разработку.
+          </p>
+        </div>
+        <div class="support-actions">
+          <a
+            class="btn primary"
+            href="https://pay.cloudtips.ru/p/17b6f1f4"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Поддержать на CloudTips
+          </a>
+          <a class="btn ghost" href="mailto:softpuff@ya.ru">softpuff@ya.ru</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <div>
+        <a href="https://github.com/ali-handro/pomogator">GitHub</a>
+        <a href="https://github.com/ali-handro/pomogator/releases">Релизы</a>
+        <a href="https://github.com/ali-handro/pomogator/releases/latest/download/SHA256.txt">
+          SHA256
+        </a>
+      </div>
+      <span>© 2026 Помогатор · Electron · Windows 10/11</span>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
