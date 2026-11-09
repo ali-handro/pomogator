@@ -85,6 +85,27 @@ updatesUrl: 'https://example.com/pomogator-updates.json',
 В настройках есть кнопка «Скопировать диагностику»: версия, система, экраны,
 настройки (без ключей) и последние логи. Её можно отправить на почту.
 
+## Автоматический релиз
+
+Релиз собирается на GitHub Actions по тегу:
+
+```powershell
+git tag v0.28.2
+git push --tags
+```
+
+Workflow `.github/workflows/release.yml`:
+
+1. ставит зависимости;
+2. запускает тесты;
+3. собирает установщик и portable;
+4. считает SHA256;
+5. генерирует `updates.json`;
+6. создаёт релиз и прикладывает файлы.
+
+Лендинг: https://ali-handro.github.io/pomogator/ — публикуется из `docs/`
+workflow `pages.yml` при пуше в `main`.
+
 ## Тесты
 
 ```powershell
