@@ -45,6 +45,7 @@ let toastTimer = null;
 let lastHotkeyStatus = { failed: [] };
 
 let appConfig = { donateUrl: '', supportEmail: 'softpuff@ya.ru' };
+let autoUpdateSupported = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -666,6 +667,187 @@ async function applySetup() {
   }
 }
 
+function addCheckRow(label, state, text) {
+  const box = $('checkAllResults');
+  if (!box) return;
+
+  const row = document.createElement('div');
+  row.className = `check-row ${state}`;
+
+  const mark = document.createElement('span');
+  mark.className = 'check-mark';
+  mark.textContent = state === 'ok' ? '✓' : state === 'warn' ? '!' : '×';
+
+  const body = document.createElement('span');
+  const title = document.createElement('b');
+  title.textContent = `${label}: `;
+  body.append(title, document.createTextNode(text));
+
+  row.append(mark, body);
+  box.appendChild(row);
+}
+
+async function testMicLevel() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const ctx = new AudioContext();
+  if (ctx.state === 'suspended') await ctx.resume();
+
+  const source = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  source.connect(analyser);
+
+  const data = new Float32Array(analyser.fftSize);
+  let peak = 0;
+  const started = performance.now();
+
+  while (performance.now() - started < 1200) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    analyser.getFloatTimeDomainData(data);
+    for (const value of data) peak = Math.max(peak, Math.abs(value));
+  }
+
+  stream.getTracks().forEach((track) => track.stop());
+  await ctx.close();
+  return peak;
+}
+
+async function testSystemAudio() {
+  const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+  const tracks = stream.getAudioTracks();
+  const hasAudio = tracks.length > 0;
+  stream.getTracks().forEach((track) => track.stop());
+  return hasAudio;
+}
+
+async function checkAll() {
+  const button = $('checkAllBtn');
+  const hint = $('checkAllHint');
+  const results = $('checkAllResults');
+  if (!hasApi || !button) return;
+
+  button.disabled = true;
+  button.textContent = 'Проверяю…';
+  if (hint) hint.textContent = 'Это может занять до минуты.';
+  if (results) results.innerHTML = '';
+
+  let ok = 0;
+  let total = 0;
+
+  try {
+    const model = await window.api.testConnection();
+    total += 1;
+    if (model && model.ok) {
+      ok += 1;
+      addCheckRow('Модель', 'ok', 'отвечает');
+    } else {
+      addCheckRow('Модель', 'err', (model && model.error) || 'не отвечает');
+    }
+
+    const stt = await window.api.testStt();
+    total += 1;
+    if (stt && stt.ok) {
+      ok += 1;
+      addCheckRow('Распознавание', 'ok', `${stt.label}, ${stt.ms} мс`);
+    } else {
+      addCheckRow('Распознавание', 'err', (stt && stt.error) || 'не работает');
+    }
+
+    if (settings.stt && settings.stt.mode === 'local') {
+      const status = await window.api.localSttStatus();
+      const model = (status.models || []).find(
+        (item) => item.id === (settings.localSttModel === 'small' ? 'small' : 'base')
+      );
+      total += 1;
+      if (status.engine && model && model.ready) {
+        ok += 1;
+        addCheckRow('Локальная модель', 'ok', 'готова');
+      } else {
+        addCheckRow('Локальная модель', 'warn', 'движок или модель не скачаны');
+      }
+    }
+
+    try {
+      const peak = await testMicLevel();
+      total += 1;
+      if (peak > 0.004) {
+        ok += 1;
+        addCheckRow('Микрофон', 'ok', 'слышит звук');
+      } else {
+        addCheckRow('Микрофон', 'warn', 'тишина — проверьте устройство');
+      }
+    } catch (err) {
+      total += 1;
+      addCheckRow('Микрофон', 'err', err.message || 'нет доступа');
+    }
+
+    try {
+      const hasSystemAudio = await testSystemAudio();
+      total += 1;
+      if (hasSystemAudio) {
+        ok += 1;
+        addCheckRow('Звук системы', 'ok', 'захватывается');
+      } else {
+        addCheckRow('Звук системы', 'warn', 'нет аудиодорожки');
+      }
+    } catch (err) {
+      total += 1;
+      addCheckRow('Звук системы', 'warn', err.message || 'недоступен');
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Проверить всё';
+    if (hint) hint.textContent = `Готово: ${ok} из ${total} без ошибок.`;
+  }
+}
+
+function handleUpdateStatus(status) {
+  if (!status) return;
+
+  const hint = $('updateHint');
+  const install = $('updateInstallBtn');
+
+  if (install && status.state !== 'ready') install.hidden = true;
+
+  switch (status.state) {
+    case 'checking':
+      if (hint) hint.textContent = 'Проверяю обновление…';
+      break;
+    case 'available':
+      if (hint) hint.textContent = `Доступна версия ${status.version}, скачиваю…`;
+      break;
+    case 'downloading':
+      if (hint) hint.textContent = `Скачиваю обновление… ${status.percent || 0}%`;
+      break;
+    case 'ready':
+      if (hint) hint.textContent = `Обновление ${status.version} готово к установке.`;
+      if (install) install.hidden = false;
+      break;
+    case 'none':
+      if (hint) hint.textContent = 'У вас последняя версия.';
+      break;
+    case 'error':
+      if (hint) hint.textContent = status.message || 'Не удалось проверить обновление.';
+      break;
+    default:
+      break;
+  }
+}
+
+async function initAutoUpdate() {
+  if (!window.api.autoUpdateStatus) return;
+
+  try {
+    const result = await window.api.autoUpdateStatus();
+    if (result && result.supported) {
+      autoUpdateSupported = true;
+      handleUpdateStatus(result.status);
+    }
+  } catch {
+    /* автообновление недоступно */
+  }
+}
+
 async function checkUpdates() {
   const hint = $('updateHint');
   const button = $('checkUpdatesBtn');
@@ -678,6 +860,18 @@ async function checkUpdates() {
   if (hint) hint.textContent = 'Проверяю обновления…';
 
   try {
+    // Установленная версия обновляется сама; portable проверяет JSON и
+    // открывает страницу загрузки.
+    const auto = window.api.autoUpdateCheck ? await window.api.autoUpdateCheck() : null;
+
+    if (auto && auto.supported) {
+      autoUpdateSupported = true;
+      if (!auto.ok && hint) {
+        hint.textContent = auto.error || 'Не удалось проверить обновление.';
+      }
+      return;
+    }
+
     const result = await window.api.checkUpdates();
 
     if (result && result.skipped) {
@@ -1225,8 +1419,30 @@ function bind() {
   const checkUpdatesBtn = $('checkUpdatesBtn');
   if (checkUpdatesBtn) checkUpdatesBtn.addEventListener('click', checkUpdates);
 
+  const updateInstallBtn = $('updateInstallBtn');
+  if (updateInstallBtn) {
+    updateInstallBtn.addEventListener('click', async () => {
+      updateInstallBtn.disabled = true;
+      try {
+        const result = await window.api.autoUpdateInstall();
+        if (!result || !result.ok) {
+          updateInstallBtn.disabled = false;
+          if ($('updateHint')) $('updateHint').textContent = 'Не удалось запустить установку.';
+        }
+      } catch (err) {
+        updateInstallBtn.disabled = false;
+        if ($('updateHint')) $('updateHint').textContent = err.message;
+      }
+    });
+  }
+
+  if (window.api.onUpdateStatus) window.api.onUpdateStatus(handleUpdateStatus);
+
   const copyDiagnosticsBtn = $('copyDiagnosticsBtn');
   if (copyDiagnosticsBtn) copyDiagnosticsBtn.addEventListener('click', copyDiagnostics);
+
+  const checkAllBtn = $('checkAllBtn');
+  if (checkAllBtn) checkAllBtn.addEventListener('click', checkAll);
 
   $('sttTestBtn').addEventListener('click', async () => {
     const btn = $('sttTestBtn');
@@ -1326,6 +1542,7 @@ async function boot() {
   enhanceSelects();
   fill();
   bind();
+  initAutoUpdate();
 
   const ai = settings.ai || {};
   if (!ai.baseUrl || !ai.model) {

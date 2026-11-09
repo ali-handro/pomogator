@@ -57,23 +57,27 @@ npm run release minor
 
 ## Обновления
 
-Проверка идёт по статическому JSON. Укажите адрес в `src/config.js`:
+Установленная версия обновляется через `electron-updater` и GitHub Releases:
+electron-builder генерирует `latest.yml`, а приложение скачивает и ставит
+обновление. В релиз попадают `latest.yml` и blockmap.
+
+Portable-версия проверяет статический JSON по адресу из `src/config.js`:
 
 ```js
-updatesUrl: 'https://example.com/pomogator-updates.json',
+updatesUrl: 'https://github.com/ali-handro/pomogator/releases/latest/download/updates.json',
 ```
 
 Формат файла:
 
 ```json
 {
-  "version": "0.26.1",
-  "url": "https://example.com/Pomogator-Setup-0.26.1.exe",
+  "version": "0.29.0",
+  "url": "https://github.com/ali-handro/pomogator/releases/download/v0.29.0/Pomogator-Setup-0.29.0.exe",
   "notes": "Что нового"
 }
 ```
 
-Сервер не нужен: файл можно положить на GitHub Pages или в релизы.
+Сервер не нужен: файл лежит в релизе.
 
 ## Поддержка и обратная связь
 

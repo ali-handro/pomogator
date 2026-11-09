@@ -83,4 +83,8 @@ jobs:
             "dist/updates.json",
             "dist/SHA256.txt"
           )
+          if (Test-Path "dist/latest.yml") { $files += "dist/latest.yml" }
+          if (Test-Path "dist/Pomogator-Setup-$version.exe.blockmap") {
+            $files += "dist/Pomogator-Setup-$version.exe.blockmap"
+          }
           gh release create $tag @files --title "Помогатор $version" --notes "Версия $version"

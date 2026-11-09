@@ -15,7 +15,9 @@ const {
   net,
   clipboard,
   safeStorage,
+  Notification,
 } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
@@ -46,6 +48,8 @@ let tray = null;
 let isQuitting = false;
 let activeAbort = null;
 let sttAbort = null;
+let updateSupported = false;
+let lastUpdateStatus = { state: 'idle' };
 
 /** Коды, при которых имеет смысл повторить запрос (лимит или временный сбой). */
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
@@ -1405,6 +1409,51 @@ async function cloudTranscribe(audio, controller, startModel) {
 /*  IPC                                                                */
 /* ------------------------------------------------------------------ */
 
+function sendUpdateStatus(payload) {
+  lastUpdateStatus = payload;
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.webContents.send('updates:status', payload);
+  }
+}
+
+function setupAutoUpdater() {
+  // Portable запускается из временной папки и обновляется заменой файла.
+  if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR) return;
+
+  updateSupported = true;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => sendUpdateStatus({ state: 'checking' }));
+  autoUpdater.on('update-available', (info) =>
+    sendUpdateStatus({ state: 'available', version: info.version })
+  );
+  autoUpdater.on('update-not-available', () => sendUpdateStatus({ state: 'none' }));
+  autoUpdater.on('download-progress', (progress) =>
+    sendUpdateStatus({ state: 'downloading', percent: Math.round(progress.percent || 0) })
+  );
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateStatus({ state: 'ready', version: info.version });
+
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'Помогатор',
+        body: `Обновление ${info.version} готово. Установится при следующем запуске.`,
+      }).show();
+    }
+  });
+  autoUpdater.on('error', (err) =>
+    sendUpdateStatus({ state: 'error', message: err.message })
+  );
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.warn('[update] check failed:', err.message);
+    });
+  }, 12000);
+}
+
 function registerIpc() {
   ipcMain.handle('settings:get', () => settings);
 
@@ -1499,6 +1548,32 @@ function registerIpc() {
   ipcMain.handle('providers:get', () => PROVIDERS);
 
   ipcMain.handle('updates:check', () => checkForUpdates());
+
+  ipcMain.handle('updates:auto-check', async () => {
+    if (!updateSupported) return { ok: true, supported: false };
+
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      return {
+        ok: true,
+        supported: true,
+        version: result && result.updateInfo ? result.updateInfo.version : '',
+      };
+    } catch (err) {
+      return { ok: false, supported: true, error: err.message };
+    }
+  });
+
+  ipcMain.handle('updates:auto-install', () => {
+    if (!updateSupported) return { ok: false, supported: false };
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
+    return { ok: true };
+  });
+
+  ipcMain.handle('updates:auto-status', () => ({
+    supported: updateSupported,
+    status: lastUpdateStatus,
+  }));
 
   ipcMain.handle('diagnostics:copy', () => {
     const text = diagnostics.collect({ settings, localStt, hotkeys });
@@ -2051,6 +2126,7 @@ app.whenReady().then(() => {
     registerIpc();
     createOverlay();
     createTray();
+    setupAutoUpdater();
     hotkeys.register();
     startHoverWatch();
     startWheel();

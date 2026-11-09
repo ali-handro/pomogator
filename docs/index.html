@@ -28,6 +28,8 @@
       <nav>
         <a href="#features">Возможности</a>
         <a href="#how">Как начать</a>
+        <a href="#keys">Ключи</a>
+        <a href="#faq">FAQ</a>
         <a href="#download">Скачать</a>
         <a href="https://github.com/ali-handro/pomogator" target="_blank" rel="noreferrer">
           GitHub
@@ -185,6 +187,195 @@
 
         <div class="split-shot">
           <img src="assets/settings.png" alt="Настройки Помогатора" />
+        </div>
+      </section>
+
+      <section id="keys" class="section">
+        <div class="section-head">
+          <span class="eyebrow">Ключи</span>
+          <h2>Где взять API-ключ</h2>
+          <p>
+            Приложение бесплатное, но модель и распознавание работают на стороне
+            провайдера. Выберите любой сервис — ключ вставляется в быстрой настройке.
+          </p>
+        </div>
+
+        <div class="providers">
+          <article class="provider">
+            <div class="provider-head">
+              <h3>OpenCode Go</h3>
+              <a href="https://opencode.ai/console" target="_blank" rel="noreferrer">
+                console →
+              </a>
+            </div>
+            <ol class="mini-steps">
+              <li>Зарегистрируйтесь на opencode.ai.</li>
+              <li>Создайте API-ключ в консоли.</li>
+              <li>Вставьте ключ в Помогатор.</li>
+            </ol>
+            <p class="provider-note">Модели: glm-5.3-flash, deepseek-v4.1-flash, qwen3.8-flash.</p>
+          </article>
+
+          <article class="provider">
+            <div class="provider-head">
+              <h3>Cloudflare Workers AI</h3>
+              <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">
+                токены →
+              </a>
+            </div>
+            <ol class="mini-steps">
+              <li>Создайте API-токен с доступом к Workers AI.</li>
+              <li>Скопируйте Account ID из панели Cloudflare.</li>
+              <li>Вставьте ключ и Account ID в Помогатор.</li>
+            </ol>
+            <p class="provider-note">
+              Модель для ответов: llama-3.3-70b. Распознавание: whisper-large-v3-turbo.
+            </p>
+          </article>
+
+          <article class="provider">
+            <div class="provider-head">
+              <h3>Groq</h3>
+              <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">
+                ключи →
+              </a>
+            </div>
+            <ol class="mini-steps">
+              <li>Войдите в консоль Groq.</li>
+              <li>Создайте API Key.</li>
+              <li>Вставьте ключ — модель и распознавание настроятся сами.</li>
+            </ol>
+            <p class="provider-note">Быстрый вариант для собеседований: gpt-oss-20b и Whisper.</p>
+          </article>
+
+          <article class="provider">
+            <div class="provider-head">
+              <h3>DeepSeek</h3>
+              <a href="https://platform.deepseek.com/" target="_blank" rel="noreferrer">
+                platform →
+              </a>
+            </div>
+            <ol class="mini-steps">
+              <li>Создайте аккаунт на platform.deepseek.com.</li>
+              <li>Пополните баланс и создайте ключ.</li>
+              <li>Вставьте ключ в Помогатор.</li>
+            </ol>
+            <p class="provider-note">Модели: deepseek-chat и deepseek-reasoner.</p>
+          </article>
+
+          <article class="provider">
+            <div class="provider-head">
+              <h3>Ollama — локально</h3>
+              <a href="https://ollama.com/download" target="_blank" rel="noreferrer">
+                скачать →
+              </a>
+            </div>
+            <ol class="mini-steps">
+              <li>Установите Ollama.</li>
+              <li>Выполните <code>ollama pull qwen2.5:7b</code>.</li>
+              <li>Выберите Ollama в Помогаторе — ключ не нужен.</li>
+            </ol>
+            <p class="provider-note">Работает без интернета и без оплаты за токены.</p>
+          </article>
+        </div>
+
+        <p class="note">
+          Ключи хранятся только на вашем компьютере в зашифрованном виде. Приложение
+          не отправляет их никуда, кроме выбранного вами провайдера.
+        </p>
+      </section>
+
+      <section id="faq" class="section">
+        <div class="section-head">
+          <span class="eyebrow">FAQ</span>
+          <h2>Частые вопросы</h2>
+          <p>Коротко о том, что обычно спрашивают перед первым запуском.</p>
+        </div>
+
+        <div class="faq">
+          <details>
+            <summary>Нужна регистрация или аккаунт?</summary>
+            <p>
+              Нет. Приложение работает без входа, без email и без облака.
+              Настройки и ключи хранятся на компьютере.
+            </p>
+          </details>
+
+          <details>
+            <summary>Нужен ли сервер Помогатора?</summary>
+            <p>
+              Нет. Вы подключаете свой API-ключ или локальную модель. Сервер проекта
+              не используется.
+            </p>
+          </details>
+
+          <details>
+            <summary>Куда уходят мои данные?</summary>
+            <p>
+              Только выбранному провайдеру: аудио — на распознавание, текст — на
+              ответ модели. Никакой телеметрии и скрытых отправок нет.
+            </p>
+          </details>
+
+          <details>
+            <summary>Windows пишет, что файл небезопасен</summary>
+            <p>
+              Файлы не подписаны сертификатом. Нажмите «Подробнее» →
+              «Выполнить в любом случае». Целостность можно проверить по SHA256
+              из релиза.
+            </p>
+          </details>
+
+          <details>
+            <summary>Не распознаётся речь</summary>
+            <p>
+              Проверьте источник звука в настройках: микрофон или звук системы.
+              Затем нажмите «Проверить распознавание». Если используете свой API,
+              убедитесь, что ключ и модель STT верные.
+            </p>
+          </details>
+
+          <details>
+            <summary>Модель не отвечает</summary>
+            <p>
+              Откройте настройки → «Проверить подключение». Проверьте адрес API,
+              ключ и название модели. Если провайдер вернул 429 — закончился лимит,
+              попробуйте другую модель или локальную Ollama.
+            </p>
+          </details>
+
+          <details>
+            <summary>Чем отличается Setup от Portable?</summary>
+            <p>
+              Setup устанавливает приложение и создаёт ярлыки. Portable — один exe,
+              который запускается без установки. Для постоянного использования
+              удобнее Setup.
+            </p>
+          </details>
+
+          <details>
+            <summary>Как обновляться?</summary>
+            <p>
+              Приложение проверяет новые версии на GitHub. Portable нужно заменить
+              вручную, установленная версия обновляется сама.
+            </p>
+          </details>
+
+          <details>
+            <summary>Сколько это стоит?</summary>
+            <p>
+              Приложение бесплатное. Платят только провайдеру за токены и
+              распознавание. Для локальной Ollama и whisper.cpp платить не нужно.
+            </p>
+          </details>
+
+          <details>
+            <summary>Где поддержка?</summary>
+            <p>
+              Напишите на <a href="mailto:softpuff@ya.ru">softpuff@ya.ru</a>.
+              Приложите диагностику из настроек — так быстрее найти причину.
+            </p>
+          </details>
         </div>
       </section>
 

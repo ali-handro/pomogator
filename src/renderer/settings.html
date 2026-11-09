@@ -404,12 +404,27 @@
         </section>
 
         <section class="card">
+          <h2>Проверка</h2>
+          <p class="account-lead">
+            Одна кнопка: модель, распознавание речи, микрофон и звук системы.
+          </p>
+          <div class="check-actions">
+            <button type="button" class="check-btn" id="checkAllBtn">Проверить всё</button>
+            <span class="hint" id="checkAllHint"></span>
+          </div>
+          <div class="check-results" id="checkAllResults"></div>
+        </section>
+
+        <section class="card">
           <h2>О программе</h2>
           <div class="about-row">
             <span class="hint" id="updateHint">Проверка обновлений</span>
             <span class="about-actions">
               <button type="button" class="ghost test-btn" id="copyDiagnosticsBtn">
                 Скопировать диагностику
+              </button>
+              <button type="button" class="ghost test-btn" id="updateInstallBtn" hidden>
+                Перезапустить и установить
               </button>
               <button type="button" class="ghost test-btn" id="checkUpdatesBtn">
                 Проверить обновления
