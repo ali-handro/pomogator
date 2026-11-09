@@ -521,6 +521,7 @@ function setSetupModel(value) {
   select.value = known ? value : '__custom__';
   input.hidden = known;
   input.value = known ? '' : value || '';
+  if (window.syncSelect) window.syncSelect(select);
   if (!known) input.focus();
 }
 
@@ -542,7 +543,7 @@ function applySetupProvider(preset) {
   if (sttCheckbox) sttCheckbox.checked = true;
 
   const sttLabel = sttRow && sttRow.querySelector('span');
-  if (sttLabel) {
+  if (sttLabel && preset.stt !== 'none') {
     sttLabel.textContent =
       preset.stt === 'cloudflare'
         ? 'Настроить распознавание через Cloudflare этим же ключом'
@@ -1191,6 +1192,7 @@ function bind() {
     setupModel.addEventListener('change', () => {
       const custom = setupModel.value === '__custom__';
       $('setupModelInput').hidden = !custom;
+      if (window.syncSelect) window.syncSelect(setupModel);
       if (custom) $('setupModelInput').focus();
     });
   }
