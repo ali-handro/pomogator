@@ -37,7 +37,6 @@ let settings = {
   job: '',
   contextPrompt: '',
   localSttModel: 'base',
-  cloudMode: false,
 };
 
 let displays = [];
@@ -45,16 +44,7 @@ let saveTimer = null;
 let toastTimer = null;
 let lastHotkeyStatus = { failed: [] };
 
-let appConfig = { donateUrl: '', topupUrl: '', supportContact: '' };
-let topupAmount = 500;
-
-const TOPUP_PLANS = [
-  { amount: 300, bonus: 0 },
-  { amount: 500, bonus: 0 },
-  { amount: 1000, bonus: 10 },
-  { amount: 2000, bonus: 15 },
-  { amount: 5000, bonus: 20 },
-];
+let appConfig = { donateUrl: '', feedbackUrl: '' };
 
 const $ = (id) => document.getElementById(id);
 
@@ -422,319 +412,29 @@ function renderHotkeyStatus(status) {
   applyHotkeyStatus();
 }
 
-/* ---------- аккаунт ---------- */
-
-let accountState = null;
-let accountOffline = false;
-
-function renderDevices() {
-  const box = $('accountDevices');
-  if (!box) return;
-
-  box.innerHTML = '';
-
-  const profile = accountState && accountState.profile;
-  const devices = (profile && profile.devices) || [];
-  if (!devices.length) return;
-
-  const title = document.createElement('div');
-  title.className = 'devices-title';
-  title.textContent = 'Устройства';
-  box.appendChild(title);
-
-  const currentId = profile.device && profile.device.id;
-
-  for (const device of devices) {
-    const row = document.createElement('div');
-    row.className = 'device-row';
-
-    const name = document.createElement('span');
-    name.textContent = device.name + (device.id === currentId ? ' · это' : '');
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'device-remove';
-    remove.textContent = 'Отвязать';
-    remove.addEventListener('click', async () => {
-      remove.disabled = true;
-      try {
-        const result = await window.api.accountRemoveDevice(device.id);
-        if (result && result.ok && result.state) {
-          accountState = result.state;
-          renderAccountState();
-        }
-      } catch (err) {
-        console.error('[account] remove device', err);
-      } finally {
-        remove.disabled = false;
-      }
-    });
-
-    row.append(name, remove);
-    box.appendChild(row);
-  }
-}
-
-function renderAccountState() {
-  const guest = $('accountGuest');
-  const user = $('accountUser');
-  if (!guest || !user) return;
-
-  const loggedIn = !!(accountState && accountState.loggedIn);
-
-  guest.hidden = loggedIn;
-  user.hidden = !loggedIn;
-
-  const title = $('accountTitle');
-  if (title) title.textContent = loggedIn ? 'Аккаунт и баланс' : 'Облако Помогатора';
-
-  if (!loggedIn) return;
-
-  $('accountEmail').textContent = accountState.email || '';
-
-  const profile = accountState.profile;
-  const wallet = profile && profile.wallet;
-
-  if (wallet) {
-    const balance = Number(wallet.balanceRub || 0);
-    const trial = Number(wallet.trialMinutesLeft || 0);
-    const trialTotal = Number(wallet.trialMinutesTotal || 0) || 20;
-
-    $('accountNote').textContent =
-      trial > 0
-        ? `Пробные минуты: ${trial} из ${trialTotal}`
-        : `Пробные минуты израсходованы (${trialTotal} мин)`;
-
-    $('accountUsage').innerHTML =
-      `Баланс: <b>${balance.toFixed(2)} ₽</b> · пробные: <b>${trial}</b> из ${trialTotal} мин`;
-
-    if (accountOffline) {
-      const stamp = accountState.profileAt
-        ? new Date(accountState.profileAt).toLocaleTimeString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '';
-
-      $('accountNote').textContent += stamp
-        ? ` · нет связи, данные на ${stamp}`
-        : ' · нет связи';
-    }
-  } else {
-    $('accountNote').textContent = accountOffline ? 'Нет связи с сервером' : 'Профиль не загружен';
-    $('accountUsage').textContent = accountOffline
-      ? 'Баланс и минуты появятся после подключения'
-      : '';
-  }
-
-  renderDevices();
-
-  const cloudBox = $('cloudMode');
-  if (cloudBox) cloudBox.checked = !!settings.cloudMode;
-
-  const connectionCard = $('connectionCard');
-  if (connectionCard) connectionCard.hidden = loggedIn && !!settings.cloudMode;
-
-  refreshCloudQuote();
-  renderStt();
-}
-
-async function refreshCloudQuote() {
-  const hint = $('cloudHint');
-  const price = $('priceLine');
-  if (!hint || !hasApi || !window.api.accountQuote) return;
-
-  const wallet = accountState && accountState.profile && accountState.profile.wallet;
-
-  const setPrice = (interviewRate, meetingRate) => {
-    if (!price) return;
-
-    if (!settings.cloudMode) {
-      price.hidden = true;
-      return;
-    }
-
-    const perMinute = (rate) =>
-      (Number(rate || 0) / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
-
-    price.textContent =
-      `Тариф: собеседование ${interviewRate} ₽/час (${perMinute(interviewRate)} ₽/мин)` +
-      ` · встречи ${meetingRate} ₽/час (${perMinute(meetingRate)} ₽/мин)`;
-    price.hidden = false;
-  };
-
-  try {
-    const [interview, meeting] = await Promise.all([
-      window.api.accountQuote('interview'),
-      window.api.accountQuote('meeting'),
-    ]);
-
-    const interviewRate = interview && interview.ok ? interview.ratePerHourRub : 449;
-    const meetingRate = meeting && meeting.ok ? meeting.ratePerHourRub : 150;
-
-    setPrice(interviewRate, meetingRate);
-
-    if (interview && interview.ok && meeting && meeting.ok) {
-      hint.textContent =
-        `Осталось: собеседование ${Math.floor(interview.remainingSeconds / 60)} мин` +
-        ` · встречи ${Math.floor(meeting.remainingSeconds / 60)} мин`;
-      return;
-    }
-  } catch {
-    setPrice(449, 150);
-  }
-
-  if (wallet) {
-    const balance = Number(wallet.balanceRub || 0);
-    const trial = Number(wallet.trialMinutesLeft || 0);
-    const interviewMin = Math.floor(trial + (balance * 60) / 449);
-    const meetingMin = Math.floor(trial + (balance * 60) / 150);
-
-    hint.textContent =
-      `Нет связи. По последним данным: собеседование ${interviewMin} мин` +
-      ` · встречи ${meetingMin} мин`;
-  } else {
-    hint.textContent = 'Нет связи с сервером';
-  }
-}
-
-async function renderAccount() {
-  if (!hasApi || !window.api.accountStatus) return;
-
-  try {
-    accountState = await window.api.accountStatus();
-  } catch {
-    accountState = null;
-  }
-
-  renderAccountState();
-
-  if (accountState && accountState.loggedIn) {
-    try {
-      const result = await window.api.accountRefresh();
-      if (result && result.state) accountState = result.state;
-      accountOffline = !(result && result.ok);
-    } catch {
-      accountOffline = true;
-    }
-
-    renderAccountState();
-  } else {
-    accountOffline = false;
-  }
-}
-
-async function logoutAccount() {
-  if (!hasApi || !window.api.accountLogout) return;
-
-  try {
-    const result = await window.api.accountLogout();
-    if (result && result.state) accountState = result.state;
-  } catch (err) {
-    console.error('[account] logout', err);
-  }
-
-  renderAccountState();
-}
-
 function renderSupport() {
   const donate = $('donateBtn');
+  const feedback = $('feedbackBtn');
   const hint = $('supportHint');
-  if (!donate) return;
 
-  donate.disabled = !appConfig.donateUrl;
-  donate.onclick = () => {
-    if (appConfig.donateUrl) window.api.openExternal(appConfig.donateUrl);
-  };
-
-  if (!hint) return;
-
-  if (!appConfig.donateUrl && !appConfig.topupUrl) {
-    hint.textContent = 'Ссылки на донаты и оплату ещё не настроены.';
-  } else if (!appConfig.topupUrl) {
-    hint.textContent = 'Пополнение пока вручную — через поддержку.';
-  } else {
-    hint.textContent = '';
-  }
-}
-
-function currentTopupPlan() {
-  return TOPUP_PLANS.find((plan) => plan.amount === topupAmount) || TOPUP_PLANS[1];
-}
-
-function renderTopupPlans() {
-  const box = $('topupAmounts');
-  if (!box) return;
-
-  box.innerHTML = '';
-
-  for (const plan of TOPUP_PLANS) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'amount';
-    button.textContent = plan.bonus ? `${plan.amount} ₽ +${plan.bonus}%` : `${plan.amount} ₽`;
-    if (plan.amount === topupAmount) button.classList.add('active');
-
-    button.addEventListener('click', () => {
-      topupAmount = plan.amount;
-      renderTopupPlans();
-      renderTopupSummary();
-    });
-
-    box.appendChild(button);
-  }
-}
-
-function renderTopupSummary() {
-  const box = $('topupSummary');
-  if (!box) return;
-
-  const plan = currentTopupPlan();
-  const credited = Math.round(plan.amount * (1 + plan.bonus / 100));
-  const minutes = Math.floor((credited / 449) * 60);
-
-  box.innerHTML = `На балансе: <b>${credited} ₽</b> · это ≈ ${minutes} мин собеседования`;
-}
-
-function openTopup() {
-  const modal = $('topupModal');
-  if (!modal) return;
-
-  if (!accountState || !accountState.loggedIn) {
-    if (hasApi) window.api.openLogin();
-    return;
+  if (donate) {
+    donate.disabled = !appConfig.donateUrl;
+    donate.onclick = () => {
+      if (appConfig.donateUrl) window.api.openExternal(appConfig.donateUrl);
+    };
   }
 
-  modal.hidden = false;
-  renderTopupPlans();
-  renderTopupSummary();
-
-  const hint = $('topupHint');
-  if (hint) {
-    hint.textContent = appConfig.topupUrl
-      ? ''
-      : 'Онлайн-оплата пока не подключена. Напишите в поддержку — зачислим вручную.';
-  }
-}
-
-function closeTopup() {
-  const modal = $('topupModal');
-  if (modal) modal.hidden = true;
-}
-
-function payTopup() {
-  const hint = $('topupHint');
-
-  if (appConfig.topupUrl) {
-    window.api.openExternal(appConfig.topupUrl);
-    if (hint) hint.textContent = 'Открыл страницу оплаты в браузере. После оплаты баланс обновится.';
-    return;
+  if (feedback) {
+    feedback.disabled = !appConfig.feedbackUrl;
+    feedback.onclick = () => {
+      if (appConfig.feedbackUrl) window.api.openExternal(appConfig.feedbackUrl);
+    };
   }
 
   if (hint) {
-    hint.textContent = appConfig.supportContact
-      ? `Онлайн-оплата пока не подключена. Напишите: ${appConfig.supportContact}`
-      : 'Онлайн-оплата пока не подключена.';
+    hint.textContent = appConfig.feedbackUrl
+      ? 'Ошибки и предложения — в Telegram. Донат не даёт дополнительных функций.'
+      : 'Приложение бесплатное. Ссылки ещё не настроены.';
   }
 }
 
@@ -744,23 +444,15 @@ function fill() {
   renderStt();
   fillSimpleFields();
   renderHotkeys();
-  renderAccount();
   renderSupport();
   syncAllSelects();
 }
 
 function renderStt() {
   const stt = settings.stt || {};
-  const cloudAvailable = !!settings.cloudMode && !!(accountState && accountState.loggedIn);
-
-  let mode = stt.mode === 'local' ? 'local' : stt.mode === 'cloud' ? 'cloud' : 'api';
-  if (mode === 'cloud' && !cloudAvailable) mode = 'api';
+  const mode = stt.mode === 'local' ? 'local' : 'api';
 
   const select = $('sttMode');
-  if (select) {
-    const cloudOption = Array.from(select.options).find((option) => option.value === 'cloud');
-    if (cloudOption) cloudOption.disabled = !cloudAvailable;
-  }
   if (select) select.value = mode;
 
   if ($('sttFormat')) $('sttFormat').value = stt.format === 'cloudflare' ? 'cloudflare' : 'openai';
@@ -782,23 +474,13 @@ function renderStt() {
   const modeField = $('sttModeField');
   if (modeField) modeField.hidden = false;
 
-  const cloud = mode === 'cloud';
   const local = mode === 'local';
 
-  const note = $('sttCloudNote');
-  if (note) note.hidden = !cloud;
-
   const apiBlock = $('sttApiBlock');
-  if (apiBlock) apiBlock.hidden = cloud || local;
+  if (apiBlock) apiBlock.hidden = local;
 
   const localBlock = $('sttLocalBlock');
-  if (localBlock) localBlock.hidden = cloud || !local;
-
-  const testRow = $('sttTestRow');
-  if (testRow) testRow.hidden = cloud;
-
-  const hint = $('sttHint');
-  if (hint) hint.hidden = cloud;
+  if (localBlock) localBlock.hidden = !local;
 
   const localModel = $('localSttModel');
   if (localModel) localModel.value = settings.localSttModel === 'small' ? 'small' : 'base';
@@ -962,7 +644,7 @@ function bind() {
     const value = $('sttMode').value;
     settings.stt = {
       ...(settings.stt || {}),
-      mode: value === 'local' ? 'local' : value === 'cloud' ? 'cloud' : 'api',
+      mode: value === 'local' ? 'local' : 'api',
     };
     renderStt();
     scheduleSave();
@@ -1202,33 +884,6 @@ function bind() {
     if (hasApi) window.api.openQuiz();
   });
 
-  const accountLoginBtn = $('accountLogin');
-  if (accountLoginBtn) {
-    accountLoginBtn.addEventListener('click', () => {
-      if (hasApi) window.api.openLogin();
-    });
-  }
-
-  const accountLogoutBtn = $('accountLogout');
-  if (accountLogoutBtn) accountLogoutBtn.addEventListener('click', logoutAccount);
-
-  const cloudModeBox = $('cloudMode');
-  if (cloudModeBox) {
-    cloudModeBox.addEventListener('change', async () => {
-      settings.cloudMode = cloudModeBox.checked;
-
-      if (hasApi) {
-        try {
-          await window.api.saveSettings({ cloudMode: settings.cloudMode });
-        } catch (err) {
-          console.error('[settings] cloud mode', err);
-        }
-      }
-
-      renderAccountState();
-    });
-  }
-
   $('sttTestBtn').addEventListener('click', async () => {
     const btn = $('sttTestBtn');
     const out = $('sttTestResult');
@@ -1256,19 +911,7 @@ function bind() {
     }
   });
 
-  $('topupBtn').addEventListener('click', openTopup);
-  $('topupClose').addEventListener('click', closeTopup);
-  $('topupPay').addEventListener('click', payTopup);
-  $('topupModal').addEventListener('click', (event) => {
-    if (event.target === $('topupModal')) closeTopup();
-  });
-
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !$('topupModal').hidden) {
-      closeTopup();
-      return;
-    }
-
     if (event.key === 'Escape' && !capturingHotkey) window.close();
   });
 }
@@ -1285,8 +928,7 @@ async function boot() {
       $('version').textContent = `v${info.version}`;
       appConfig = {
         donateUrl: info.donateUrl || '',
-        topupUrl: info.topupUrl || '',
-        supportContact: info.supportContact || '',
+        feedbackUrl: info.feedbackUrl || '',
       };
 
       window.api.onDisplaysChanged(async () => {
@@ -1319,12 +961,6 @@ async function boot() {
         if (!editing && !capturingHotkey) fill();
       });
 
-      window.api.onAccountChanged((state) => {
-        accountState = state;
-        renderAccountState();
-        if (state && state.loggedIn && !state.profile) renderAccount();
-      });
-
       window.api.onHotkeysStatus((status) => renderHotkeyStatus(status));
 
       try {
@@ -1341,10 +977,6 @@ async function boot() {
   enhanceSelects();
   fill();
   bind();
-
-  window.addEventListener('focus', () => {
-    if (accountState && accountState.loggedIn) renderAccount();
-  });
 }
 
 window.addEventListener('DOMContentLoaded', boot);

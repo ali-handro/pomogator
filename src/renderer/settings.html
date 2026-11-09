@@ -38,53 +38,18 @@
       </header>
 
       <main class="content">
-        <section class="card plan-card">
-          <h2 id="accountTitle">Аккаунт и баланс</h2>
-
-          <div id="accountGuest">
-            <p class="account-lead">
-              Приложение работает бесплатно на ваших настройках — вход не нужен.
-              Почта требуется только для облака Помогатора: без ключей и с оплатой по минутам.
-            </p>
-            <button type="button" class="ghost test-btn" id="accountLogin">Войти</button>
-          </div>
-
-          <div id="accountUser" hidden>
-            <div class="plan-head">
-              <div class="plan-title">
-                <span class="plan-name paid" id="accountEmail"></span>
-                <span class="plan-note" id="accountNote"></span>
-              </div>
-              <div class="account-actions">
-                <button type="button" class="ghost test-btn" id="accountLogout">Выйти</button>
-              </div>
-            </div>
-
-            <div class="plan-usage" id="accountUsage"></div>
-
-            <label class="check" id="cloudModeRow">
-              <input type="checkbox" id="cloudMode" />
-              <span>Работать через облако Помогатора</span>
-            </label>
-            <span class="hint" id="cloudHint"></span>
-            <div class="price-line" id="priceLine" hidden></div>
-
-            <div class="devices" id="accountDevices"></div>
-          </div>
-        </section>
-
         <section class="card support-card">
           <h2>Поддержать проект</h2>
           <p class="account-lead">
-            Приложение бесплатное. Если оно помогает — можно отблагодарить разработку.
-            Это необязательно и не влияет на работу.
+            Приложение бесплатное и работает на ваших настройках. Если оно помогает —
+            можно отблагодарить разработку. Это необязательно и ничего не ограничивает.
           </p>
           <div class="support-actions">
             <button type="button" class="ghost test-btn" id="donateBtn" disabled>
-              Поддержать на Boosty
+              Поддержать проект
             </button>
-            <button type="button" class="ghost test-btn" id="topupBtn">
-              Пополнить облако
+            <button type="button" class="ghost test-btn" id="feedbackBtn" disabled>
+              Написать в Telegram
             </button>
           </div>
           <span class="hint" id="supportHint"></span>
@@ -233,17 +198,10 @@
           <label class="field" id="sttModeField">
             <span class="label">Распознавание речи</span>
             <select id="sttMode">
-              <option value="cloud">Через облако Помогатора</option>
               <option value="api">Свой API — ввести адрес и ключ</option>
               <option value="local">Локально (whisper.cpp) — без интернета</option>
             </select>
           </label>
-
-          <div class="cloud-note" id="sttCloudNote" hidden>
-            <b>Звук идёт через облако Помогатора.</b>
-            Ключи и адреса не нужны: распознавание и ответы идут через наш сервер,
-            минуты списываются с баланса.
-          </div>
 
           <div id="sttApiBlock">
             <label class="field">
@@ -450,27 +408,6 @@
         <span class="saved" id="saved">Сохранено</span>
         <span class="foot-note">Изменения применяются сразу</span>
       </footer>
-    </div>
-
-    <div class="modal" id="topupModal" hidden>
-      <div class="modal-card">
-        <header class="modal-head">
-          <span>Пополнить облако</span>
-          <button type="button" class="ghost test-btn" id="topupClose" title="Закрыть">✕</button>
-        </header>
-
-        <p class="modal-note">
-          Сумма зачисляется на баланс. Минуты списываются по тарифу:
-          собеседование 449 ₽/час, встречи 150 ₽/час.
-        </p>
-
-        <div class="amounts" id="topupAmounts"></div>
-
-        <div class="topup-summary" id="topupSummary"></div>
-
-        <button type="button" class="primary modal-pay" id="topupPay">Перейти к оплате</button>
-        <span class="hint" id="topupHint"></span>
-      </div>
     </div>
 
     <script src="select.js"></script>

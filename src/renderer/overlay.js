@@ -38,8 +38,6 @@ const el = {
   btnReview: document.getElementById('btnReview'),
   btnCopy: document.getElementById('btnCopy'),
   toast: document.getElementById('toast'),
-  cloudBalance: document.getElementById('cloudBalance'),
-  cloudSep: document.getElementById('cloudSep'),
   histCount: document.getElementById('histCount'),
   btnRegen: document.getElementById('btnRegen'),
   btnClear: document.getElementById('btnClear'),
@@ -1106,8 +1104,7 @@ function applySettings() {
     ? `${pauseHotkey()} — пауза · Ctrl+Shift+Space — скрыть`
     : `Клик-режим · Ctrl+Shift+E — выключить · ${pauseHotkey()} — пауза`;
 
-  const configured =
-    !!(settings.ai && settings.ai.baseUrl && settings.ai.model) || !!settings.cloudMode;
+  const configured = !!(settings.ai && settings.ai.baseUrl && settings.ai.model);
 
   if (state === 'error') return;
 
@@ -1122,61 +1119,6 @@ function applySettings() {
         : 'Слушаю микрофон. Задайте вопрос — ответ появится здесь.';
     if (!stt.listening && !stt.pausedByUser) setListening(true, false);
   }
-}
-
-/* ---------- баланс облака ---------- */
-
-let cloudBalanceAt = 0;
-
-async function refreshCloudBalance() {
-  const box = el.cloudBalance;
-  const sep = el.cloudSep;
-  if (!box || !sep || !hasApi || !window.api.accountQuote) return;
-
-  if (!settings.cloudMode) {
-    box.hidden = true;
-    sep.hidden = true;
-    return;
-  }
-
-  try {
-    const status = await window.api.accountStatus();
-    if (!status || !status.loggedIn) {
-      box.hidden = true;
-      sep.hidden = true;
-      return;
-    }
-  } catch {
-    box.hidden = true;
-    sep.hidden = true;
-    return;
-  }
-
-  try {
-    const quote = await window.api.accountQuote('interview');
-
-    if (!quote || !quote.ok) {
-      box.hidden = true;
-      sep.hidden = true;
-      return;
-    }
-
-    const minutes = Math.max(0, Math.floor(quote.remainingSeconds / 60));
-
-    box.textContent = `облако: ${minutes} мин`;
-    box.classList.toggle('low', minutes < 5);
-    box.hidden = false;
-    sep.hidden = false;
-    cloudBalanceAt = Date.now();
-  } catch {
-    box.hidden = true;
-    sep.hidden = true;
-  }
-}
-
-function scheduleCloudBalance() {
-  if (Date.now() - cloudBalanceAt < 30000) return;
-  refreshCloudBalance();
 }
 
 async function toggleSource() {
@@ -1304,12 +1246,7 @@ function bindIpc() {
     settings = next;
     applySettings();
     ensureSource();
-    refreshCloudBalance();
   });
-
-  if (window.api.onCloudUsage) {
-    window.api.onCloudUsage(() => scheduleCloudBalance());
-  }
 
   window.api.onClickThrough((value) => {
     document.body.dataset.interactive = String(!value);
@@ -1438,9 +1375,6 @@ async function boot() {
   await ensureSource();
   setListening(false, true);
   applySettings();
-
-  refreshCloudBalance();
-  setInterval(refreshCloudBalance, 60000);
 
   if (!hasApi) {
     el.hint.textContent = 'Это предпросмотр без доступа к API.';

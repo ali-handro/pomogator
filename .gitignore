@@ -4,8 +4,3 @@ dist/
 npm-debug.log*
 Thumbs.db
 .DS_Store
-
-# сервер
-server/data/
-server/.env
-server/.env.test

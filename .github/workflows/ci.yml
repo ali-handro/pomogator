@@ -15,14 +15,7 @@ jobs:
         with:
           node-version: 24
 
-      - name: Проверка синтаксиса API
-        run: |
-          for file in server/src/*.js; do
-            echo "check $file"
-            node --check "$file"
-          done
-
-      - name: Проверка синтаксиса приложения
+      - name: Синтаксис приложения
         run: |
           for file in src/*.js src/renderer/*.js; do
             echo "check $file"
@@ -31,6 +24,4 @@ jobs:
 
       - name: Секреты не попали в репозиторий
         run: |
-          test ! -f server/.env
-          test ! -d server/data
           ! git ls-files | grep -E '(^|/)(\.env|settings\.json|account\.json)$'

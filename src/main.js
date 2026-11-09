@@ -26,7 +26,6 @@ const { startWheelHook, stopWheelHook } = require('./wheel-hook');
 const { createHotkeys } = require('./hotkeys');
 const { createScreenshotService } = require('./screenshot');
 const { createMeetingStore } = require('./meeting-store');
-const { createAccount } = require('./account');
 const appConfig = require('./config');
 const { buildMessages } = require('./prompt');
 
@@ -38,12 +37,10 @@ let settingsWin = null;
 let trainerWin = null;
 let meetingWin = null;
 let quizWin = null;
-let loginWin = null;
 let tray = null;
 let isQuitting = false;
 let activeAbort = null;
 let sttAbort = null;
-let account = null;
 
 /** Коды, при которых имеет смысл повторить запрос (лимит или временный сбой). */
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
@@ -118,7 +115,6 @@ const DEFAULT_SETTINGS = {
   autoAnswer: true,
   listen: false,
   silenceMs: 450,
-  cloudMode: false,
   hotkeys: {
     toggle: 'Control+Shift+Space',
     interactive: 'Control+Shift+E',
@@ -271,6 +267,18 @@ function loadSettings() {
     settings.ai = { ...DEFAULT_SETTINGS.ai, ...(settings.ai || {}) };
     settings.stt = { ...DEFAULT_SETTINGS.stt, ...(settings.stt || {}) };
 
+    // Приложение больше не работает через сервер: убираем старые настройки облака.
+    let cloudRemoved = false;
+    if ('cloudMode' in settings) {
+      delete settings.cloudMode;
+      cloudRemoved = true;
+    }
+    if (settings.stt.mode === 'cloud') {
+      settings.stt.mode = 'api';
+      cloudRemoved = true;
+    }
+    if (cloudRemoved) persist();
+
     // Для русского Whisper точнее, чем Nova. Переводим один раз.
     if (!settings.sttQuality) {
       if (
@@ -310,8 +318,6 @@ function persist() {
 
 /** Не хватает адреса или модели — нужно показать настройки. */
 function needsSetup() {
-  if (settings.cloudMode && account && account.status().loggedIn) return false;
-
   const ai = aiConfig();
   return !ai.baseUrl || !ai.model;
 }
@@ -369,22 +375,12 @@ const screenshots = createScreenshotService({
   streamChat,
   providerConfig,
   visionModel,
-  cloudChat: async (messages, maxTokens) => {
-    if (!settings.cloudMode || !account || !account.status().loggedIn) return null;
-    const result = await account.chat(messages, 'interview', maxTokens);
-    return result && result.ok ? result.text : null;
-  },
 });
 
 const meetings = createMeetingStore({
   getSettings: () => settings,
   streamChat,
   providerConfig,
-  cloudChat: async (messages, maxTokens) => {
-    if (!settings.cloudMode || !account || !account.status().loggedIn) return null;
-    const result = await account.chat(messages, 'meeting', maxTokens);
-    return result && result.ok ? result.text : null;
-  },
 });
 
 /* ------------------------------------------------------------------ */
@@ -752,54 +748,6 @@ function createSettings() {
   });
 
   settingsWin.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
-}
-
-/**
- * Окно входа: почта → код из письма → токен сессии.
- */
-function createLogin() {
-  if (loginWin && !loginWin.isDestroyed()) {
-    loginWin.show();
-    loginWin.focus();
-    return;
-  }
-
-  loginWin = new BrowserWindow({
-    width: 430,
-    height: 560,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    alwaysOnTop: false,
-    title: 'Помогатор — вход',
-    backgroundColor: '#0b0f16',
-    autoHideMenuBar: true,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-
-  loginWin.loadFile(path.join(__dirname, 'renderer', 'login.html'));
-
-  loginWin.once('ready-to-show', () => {
-    if (!loginWin || loginWin.isDestroyed()) return;
-    loginWin.show();
-    loginWin.focus();
-  });
-
-  loginWin.on('closed', () => {
-    loginWin = null;
-  });
-
-  loginWin.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -1455,61 +1403,6 @@ async function cloudTranscribe(audio, controller, startModel) {
 function registerIpc() {
   ipcMain.handle('settings:get', () => settings);
 
-  /* ---------- аккаунт ---------- */
-
-  ipcMain.handle('account:status', () => account.status());
-
-  ipcMain.handle('account:request-code', async (_event, email) => {
-    try {
-      return { ok: true, ...(await account.requestCode(email)) };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('account:verify', async (_event, payload) => {
-    try {
-      const state = await account.verify(payload && payload.email, payload && payload.code);
-      return { ok: true, state };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('account:refresh', async () => {
-    try {
-      return { ok: true, state: await account.refresh() };
-    } catch (err) {
-      return { ok: false, error: err.message, state: account.status() };
-    }
-  });
-
-  ipcMain.handle('account:logout', async () => {
-    try {
-      return { ok: true, state: await account.logout() };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('account:remove-device', async (_event, id) => {
-    try {
-      return { ok: true, state: await account.removeDevice(id) };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('account:quote', async (_event, kind) => {
-    try {
-      return { ok: true, ...(await account.quote(kind)) };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.on('account:open-login', createLogin);
-
   ipcMain.handle('settings:save', (_event, patch) => {
     const prevHotkeys = JSON.stringify(settings.hotkeys);
     const prevDisplay = Number(settings.overlayDisplay) || 0;
@@ -1595,8 +1488,7 @@ function registerIpc() {
     platform: process.platform,
     userData: app.getPath('userData'),
     donateUrl: appConfig.donateUrl || '',
-    topupUrl: appConfig.topupUrl || '',
-    supportContact: appConfig.supportContact || '',
+    feedbackUrl: appConfig.feedbackUrl || '',
   }));
 
   ipcMain.handle('providers:get', () => PROVIDERS);
@@ -1688,37 +1580,6 @@ function registerIpc() {
   ipcMain.handle('llm:ask', async (_event, payload) => {
     const question = String((payload && payload.question) || '').trim();
     if (!question) return { ok: false, error: 'Пустой вопрос' };
-
-    // Облако Помогатора: ответ идёт через наш сервер, ключи не нужны.
-    if (settings.cloudMode && account && account.status().loggedIn) {
-      if (activeAbort) activeAbort.abort();
-      const controller = new AbortController();
-      activeAbort = controller;
-
-      sendToOverlay('llm:start');
-
-      try {
-        const result = await account.chat(
-          buildMessages({ question, settings }),
-          'interview',
-          400
-        );
-
-        if (!result || !result.ok) {
-          throw new Error((result && result.error) || 'Облако не ответило');
-        }
-
-        if (result.text) sendToOverlay('llm:delta', result.text);
-        sendToOverlay('llm:done');
-        return { ok: true, cloud: true };
-      } catch (err) {
-        if (err.name === 'AbortError') return { ok: false, aborted: true };
-        sendToOverlay('llm:error', err.message);
-        return { ok: false, error: err.message };
-      } finally {
-        if (activeAbort === controller) activeAbort = null;
-      }
-    }
 
     const ai = aiConfig();
 
@@ -1867,37 +1728,7 @@ function registerIpc() {
     }
 
     const sttSettings = settings.stt || {};
-    const cloudReady = !!settings.cloudMode && !!account && account.status().loggedIn;
-
-    let mode = sttSettings.mode === 'local' ? 'local' : sttSettings.mode === 'cloud' ? 'cloud' : 'api';
-    if (mode === 'cloud' && !cloudReady) mode = 'api';
-
-    // Облако Помогатора: только если в настройках выбран режим «через облако».
-    if (mode === 'cloud') {
-      const kind = override && override.kind === 'meeting' ? 'meeting' : 'interview';
-
-      try {
-        const result = await account.transcribe(
-          audio,
-          kind,
-          settings.language,
-          settings.contextPrompt || ''
-        );
-
-        if (result && result.ok) {
-          sendToOverlay('cloud:usage', {
-            balanceKopecks: result.balanceKopecks,
-            trialSecondsLeft: result.trialSecondsLeft,
-          });
-          return { ok: true, text: result.text, model: 'cloud' };
-        }
-
-        return { ok: false, error: (result && result.error) || 'Облако не ответило' };
-      } catch (err) {
-        if (err.name === 'AbortError') return { ok: false, aborted: true };
-        return { ok: false, error: err.message };
-      }
-    }
+    const mode = sttSettings.mode === 'local' ? 'local' : 'api';
 
     if (sttAbort) sttAbort.abort();
     const controller = new AbortController();
@@ -2179,16 +2010,6 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.pomogator.app');
     migrateLegacyData();
     loadSettings();
-
-    account = createAccount({
-      getSettings: () => settings,
-      onChanged: (state) => {
-        if (settingsWin && !settingsWin.isDestroyed()) {
-          settingsWin.webContents.send('account:changed', state);
-        }
-      },
-    });
-    account.load();
 
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(

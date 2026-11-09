@@ -14,17 +14,6 @@ contextBridge.exposeInMainWorld('api', {
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   onSettingsChanged: (cb) => subscribe('settings:changed', cb),
 
-  /* аккаунт */
-  accountStatus: () => ipcRenderer.invoke('account:status'),
-  accountRequestCode: (email) => ipcRenderer.invoke('account:request-code', email),
-  accountVerify: (email, code) => ipcRenderer.invoke('account:verify', { email, code }),
-  accountRefresh: () => ipcRenderer.invoke('account:refresh'),
-  accountLogout: () => ipcRenderer.invoke('account:logout'),
-  accountRemoveDevice: (id) => ipcRenderer.invoke('account:remove-device', id),
-  accountQuote: (kind) => ipcRenderer.invoke('account:quote', kind),
-  onAccountChanged: (cb) => subscribe('account:changed', cb),
-  openLogin: () => ipcRenderer.send('account:open-login'),
-
   /* окно */
   setClickThrough: (value) => ipcRenderer.send('overlay:set-click-through', value),
   onClickThrough: (cb) => subscribe('overlay:click-through', cb),
@@ -66,7 +55,6 @@ contextBridge.exposeInMainWorld('api', {
   onLlmDelta: (cb) => subscribe('llm:delta', cb),
   onLlmDone: (cb) => subscribe('llm:done', cb),
   onLlmError: (cb) => subscribe('llm:error', cb),
-  onCloudUsage: (cb) => subscribe('cloud:usage', cb),
 
   /* распознавание речи */
   transcribe: (audio, override) => ipcRenderer.invoke('stt:transcribe', { audio, override }),

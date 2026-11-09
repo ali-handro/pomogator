@@ -1,16 +1,14 @@
 'use strict';
 
 /**
- * Ссылки для поддержки проекта и оплаты облака.
+ * Ссылки приложения.
  *
- * donateUrl      — страница донатов: Boosty, DonationAlerts и т.п.
- * topupUrl       — страница оплаты облака: ЮKassa, Lava.top и т.п.
- * supportContact — куда написать, если оплата пока вручную.
+ * donateUrl    — страница донатов (CloudTips).
+ * feedbackUrl  — куда написать по вопросам и ошибкам (Telegram).
  *
- * Пустая строка — блок показывает, что ссылка ещё не настроена.
+ * Достаточно поменять значения здесь и пересобрать приложение.
  */
 module.exports = {
-  donateUrl: '',
-  topupUrl: '',
-  supportContact: '',
+  donateUrl: 'https://pay.cloudtips.ru/p/17b6f1f4',
+  feedbackUrl: 'https://t.me/Alex_sndr',
 };
