@@ -44,7 +44,7 @@ let saveTimer = null;
 let toastTimer = null;
 let lastHotkeyStatus = { failed: [] };
 
-let appConfig = { donateUrl: '', feedbackUrl: '' };
+let appConfig = { donateUrl: '', supportEmail: 'softpuff@ya.ru' };
 
 const $ = (id) => document.getElementById(id);
 
@@ -710,10 +710,11 @@ async function copyDiagnostics() {
 
   try {
     const result = await window.api.copyDiagnostics();
+    const email = appConfig.supportEmail || 'softpuff@ya.ru';
     if (hint) {
       hint.textContent =
         result && result.ok
-          ? 'Диагностика скопирована. Вставьте её в Telegram — ключи в неё не попадают.'
+          ? `Диагностика скопирована. Вставьте её в письмо на ${email} — ключи в неё не попадают.`
           : 'Не удалось собрать диагностику.';
     }
   } catch (err) {
@@ -723,8 +724,8 @@ async function copyDiagnostics() {
   }
 }
 
-function renderSupport() {  const donate = $('donateBtn');
-  const feedback = $('feedbackBtn');
+function renderSupport() {
+  const donate = $('donateBtn');
   const hint = $('supportHint');
 
   if (donate) {
@@ -734,17 +735,18 @@ function renderSupport() {  const donate = $('donateBtn');
     };
   }
 
-  if (feedback) {
-    feedback.disabled = !appConfig.feedbackUrl;
-    feedback.onclick = () => {
-      if (appConfig.feedbackUrl) window.api.openExternal(appConfig.feedbackUrl);
+  const email = $('feedbackEmail');
+  if (email) {
+    email.textContent = appConfig.supportEmail || 'softpuff@ya.ru';
+    email.onclick = () => {
+      if (appConfig.supportEmail) {
+        window.api.openExternal(`mailto:${appConfig.supportEmail}`);
+      }
     };
   }
 
   if (hint) {
-    hint.textContent = appConfig.feedbackUrl
-      ? 'Ошибки и предложения — в Telegram. Донат не даёт дополнительных функций.'
-      : 'Приложение бесплатное. Ссылки ещё не настроены.';
+    hint.textContent = 'Донат не даёт дополнительных функций. Ошибки и предложения — на почту внизу окна.';
   }
 }
 
@@ -1275,7 +1277,7 @@ async function boot() {
       $('version').textContent = `v${info.version}`;
       appConfig = {
         donateUrl: info.donateUrl || '',
-        feedbackUrl: info.feedbackUrl || '',
+        supportEmail: info.supportEmail || 'softpuff@ya.ru',
       };
 
       window.api.onDisplaysChanged(async () => {

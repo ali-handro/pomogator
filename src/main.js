@@ -1493,7 +1493,7 @@ function registerIpc() {
     platform: process.platform,
     userData: app.getPath('userData'),
     donateUrl: appConfig.donateUrl || '',
-    feedbackUrl: appConfig.feedbackUrl || '',
+    supportEmail: appConfig.supportEmail || '',
   }));
 
   ipcMain.handle('providers:get', () => PROVIDERS);
