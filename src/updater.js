@@ -2,6 +2,7 @@
 
 const { app, net, shell, Notification } = require('electron');
 const appConfig = require('./config');
+const { isNewer } = require('./version');
 
 /**
  * Проверка обновлений по статическому JSON. Сервер не нужен: файл можно
@@ -10,27 +11,6 @@ const appConfig = require('./config');
  * Формат updatesUrl:
  *   { "version": "0.27.0", "url": "https://.../Pomogator-Setup-0.27.0.exe", "notes": "..." }
  */
-function parts(version) {
-  return String(version || '')
-    .replace(/^v/i, '')
-    .split(/[.-]/)
-    .map((value) => Number.parseInt(value, 10) || 0);
-}
-
-function isNewer(remote, current) {
-  const a = parts(remote);
-  const b = parts(current);
-  const length = Math.max(a.length, b.length);
-
-  for (let i = 0; i < length; i += 1) {
-    const left = a[i] || 0;
-    const right = b[i] || 0;
-    if (left > right) return true;
-    if (left < right) return false;
-  }
-
-  return false;
-}
 
 async function checkForUpdates() {
   const url = String(appConfig.updatesUrl || '').trim();

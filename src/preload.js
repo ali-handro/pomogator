@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('api', {
   onLocalSttProgress: (cb) => subscribe('localStt:progress', cb),
   testConnection: () => ipcRenderer.invoke('llm:test'),
   checkUpdates: () => ipcRenderer.invoke('updates:check'),
+  copyDiagnostics: () => ipcRenderer.invoke('diagnostics:copy'),
   listModels: (kind) => ipcRenderer.invoke('models:list', kind),
 
   /* системное */

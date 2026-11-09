@@ -832,6 +832,13 @@ kbd {
   gap: 12px;
 }
 
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* ---------- узкое окно ---------- */
 
 @media (max-width: 680px) {

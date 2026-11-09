@@ -2,6 +2,7 @@
 
 const path = require('path');
 const { BrowserWindow, screen, desktopCapturer } = require('electron');
+const { cropRect } = require('./crop');
 
 const VISION_MODES = {
   solve: {
@@ -276,14 +277,11 @@ function createScreenshotService({
     if (!shot) return null;
 
     const size = shot.image.getSize();
-    const x = Math.max(0, Math.round(rect.x * shot.scaleX));
-    const y = Math.max(0, Math.round(rect.y * shot.scaleY));
-    const width = Math.min(size.width - x, Math.round(rect.width * shot.scaleX));
-    const height = Math.min(size.height - y, Math.round(rect.height * shot.scaleY));
+    const area = cropRect(rect, size, shot.scaleX, shot.scaleY);
 
-    if (width < 8 || height < 8) return null;
+    if (area.width < 8 || area.height < 8) return null;
 
-    let image = shot.image.crop({ x, y, width, height });
+    let image = shot.image.crop(area);
     // Больше 1600 px по ширине vision-модели всё равно ужимают.
     if (image.getSize().width > 1600) image = image.resize({ width: 1600, quality: 'good' });
 

@@ -28,6 +28,10 @@ const { createScreenshotService } = require('./screenshot');
 const { createMeetingStore } = require('./meeting-store');
 const appConfig = require('./config');
 const { checkForUpdates, checkAndNotify } = require('./updater');
+const logs = require('./log-buffer');
+const diagnostics = require('./diagnostics');
+
+logs.install();
 const { buildMessages } = require('./prompt');
 
 const APP_ROOT = path.join(__dirname, '..');
@@ -1496,6 +1500,12 @@ function registerIpc() {
 
   ipcMain.handle('updates:check', () => checkForUpdates());
 
+  ipcMain.handle('diagnostics:copy', () => {
+    const text = diagnostics.collect({ settings, localStt, hotkeys });
+    clipboard.writeText(text);
+    return { ok: true, length: text.length };
+  });
+
   ipcMain.handle('llm:test', async () => {
     const ai = aiConfig();
 
@@ -2001,6 +2011,14 @@ function migrateLegacyData() {
  * Ссылки открываем только во внешнем браузере.
  */
 app.on('browser-window-created', (_event, win) => {
+  win.webContents.on('console-message', (...args) => {
+    const details = args.find((item) => item && typeof item === 'object' && 'message' in item);
+    const message =
+      (details && details.message) ||
+      (typeof args[2] === 'string' ? args[2] : '');
+    if (message) logs.push(`[renderer] ${message}`);
+  });
+
   win.webContents.on('will-navigate', (event, url) => {
     if (url.startsWith('file://')) return;
 

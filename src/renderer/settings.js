@@ -700,6 +700,29 @@ async function checkUpdates() {
   }
 }
 
+async function copyDiagnostics() {
+  const hint = $('updateHint');
+  const button = $('copyDiagnosticsBtn');
+  if (!hasApi || !window.api.copyDiagnostics) return;
+
+  if (button) button.disabled = true;
+  if (hint) hint.textContent = 'Собираю диагностику…';
+
+  try {
+    const result = await window.api.copyDiagnostics();
+    if (hint) {
+      hint.textContent =
+        result && result.ok
+          ? 'Диагностика скопирована. Вставьте её в Telegram — ключи в неё не попадают.'
+          : 'Не удалось собрать диагностику.';
+    }
+  } catch (err) {
+    if (hint) hint.textContent = err.message || 'Не удалось собрать диагностику.';
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function renderSupport() {  const donate = $('donateBtn');
   const feedback = $('feedbackBtn');
   const hint = $('supportHint');
@@ -1199,6 +1222,9 @@ function bind() {
 
   const checkUpdatesBtn = $('checkUpdatesBtn');
   if (checkUpdatesBtn) checkUpdatesBtn.addEventListener('click', checkUpdates);
+
+  const copyDiagnosticsBtn = $('copyDiagnosticsBtn');
+  if (copyDiagnosticsBtn) copyDiagnosticsBtn.addEventListener('click', copyDiagnostics);
 
   $('sttTestBtn').addEventListener('click', async () => {
     const btn = $('sttTestBtn');
