@@ -5,6 +5,7 @@
  *
  * donateUrl    — страница донатов (CloudTips).
  * supportEmail — почта для обратной связи и диагностики.
+ * helpUrl      — страница помощи и FAQ.
  * updatesUrl   — JSON с последней версией. Пустая строка — проверка отключена.
  *
  * Формат updatesUrl:
@@ -15,5 +16,6 @@
 module.exports = {
   donateUrl: 'https://pay.cloudtips.ru/p/17b6f1f4',
   supportEmail: 'softpuff@ya.ru',
+  helpUrl: 'https://ali-handro.github.io/pomogator/#faq',
   updatesUrl: 'https://github.com/ali-handro/pomogator/releases/latest/download/updates.json',
 };

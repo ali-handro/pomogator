@@ -6,9 +6,9 @@ rem Сначала запустите test-server.cmd.
 
 set POMOGATOR_API=http://127.0.0.1:8787
 
-if exist "%USERPROFILE%\Desktop\Pomogator-0.29.0.exe" (
-  start "" "%USERPROFILE%\Desktop\Pomogator-0.29.0.exe"
+if exist "%USERPROFILE%\Desktop\Pomogator-0.30.0.exe" (
+  start "" "%USERPROFILE%\Desktop\Pomogator-0.30.0.exe"
 ) else (
-  echo Не найден Pomogator-0.29.0.exe на рабочем столе.
+  echo Не найден Pomogator-0.30.0.exe на рабочем столе.
   pause
 )

@@ -32,11 +32,14 @@ let settings = {
   overlayDisplay: 0,
   overlayWidth: 980,
   overlayHeight: 232,
+  overlayFontScale: 1,
   hotkeys: { listen: 'Control+Space' },
   resume: '',
   job: '',
   contextPrompt: '',
+  terms: '',
   localSttModel: 'base',
+  localSttGpu: false,
 };
 
 let displays = [];
@@ -44,8 +47,14 @@ let saveTimer = null;
 let toastTimer = null;
 let lastHotkeyStatus = { failed: [] };
 
-let appConfig = { donateUrl: '', supportEmail: 'softpuff@ya.ru' };
+let appConfig = { donateUrl: '', supportEmail: 'softpuff@ya.ru', helpUrl: '' };
 let autoUpdateSupported = false;
+
+const LOCAL_MODEL_IDS = ['base', 'small', 'medium', 'large'];
+
+function localModelId(value) {
+  return LOCAL_MODEL_IDS.includes(value) ? value : 'base';
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -186,6 +195,7 @@ function rangeLabel(key) {
   if (key === 'answerWords') out.textContent = `${value} слов`;
   else if (key === 'silenceMs') out.textContent = `${value} мс`;
   else if (key === 'opacity') out.textContent = `${Math.round(value * 100)}%`;
+  else if (key === 'overlayFontScale') out.textContent = `${Math.round(value * 100)}%`;
   else if (key === 'overlayWidth' || key === 'overlayHeight') out.textContent = `${value} px`;
   else out.textContent = String(value);
 }
@@ -756,7 +766,7 @@ async function checkAll() {
     if (settings.stt && settings.stt.mode === 'local') {
       const status = await window.api.localSttStatus();
       const model = (status.models || []).find(
-        (item) => item.id === (settings.localSttModel === 'small' ? 'small' : 'base')
+        (item) => item.id === localModelId(settings.localSttModel)
       );
       total += 1;
       if (status.engine && model && model.ready) {
@@ -989,11 +999,44 @@ function renderStt() {
   if (localBlock) localBlock.hidden = !local;
 
   const localModel = $('localSttModel');
-  if (localModel) localModel.value = settings.localSttModel === 'small' ? 'small' : 'base';
+  if (localModel) localModel.value = localModelId(settings.localSttModel);
+
+  const localGpu = $('localSttGpu');
+  if (localGpu) localGpu.checked = !!settings.localSttGpu;
 
   syncAllSelects();
 
-  if (local) refreshLocalStatus();
+  if (local) {
+    refreshLocalStatus();
+    refreshGpuInfo();
+  }
+}
+
+async function refreshGpuInfo() {
+  const hint = $('localSttGpuHint');
+  const checkbox = $('localSttGpu');
+  if (!hint || !checkbox || !hasApi || !window.api.localSttGpuInfo) return;
+
+  try {
+    const info = await window.api.localSttGpuInfo();
+
+    if (info && info.available) {
+      checkbox.disabled = false;
+      hint.textContent = `Найдено: ${info.name}. Движок CUDA скачается один раз (~685 МБ).`;
+      return;
+    }
+
+    checkbox.disabled = true;
+    hint.textContent = 'NVIDIA не найден — будет использоваться CPU.';
+
+    if (settings.localSttGpu) {
+      settings.localSttGpu = false;
+      checkbox.checked = false;
+      scheduleSave();
+    }
+  } catch {
+    hint.textContent = 'Не удалось проверить видеокарту.';
+  }
 }
 
 async function refreshLocalStatus() {
@@ -1003,19 +1046,21 @@ async function refreshLocalStatus() {
 
   try {
     const status = await window.api.localSttStatus();
-    const size = settings.localSttModel === 'small' ? 'small' : 'base';
+    const size = localModelId(settings.localSttModel);
+    const gpu = !!settings.localSttGpu;
     const model = (status.models || []).find((item) => item.id === size);
     const ready = status.engine && model && model.ready;
+    const engineLabel = gpu ? 'GPU' : 'CPU';
 
     if (ready) {
       out.className = 'test-result ok';
-      out.textContent = `Готово: движок и модель ${size}`;
+      out.textContent = `Готово: движок ${engineLabel} и модель ${size}`;
       btn.textContent = 'Перекачать';
     } else {
       out.className = 'test-result';
       out.textContent = status.engine
-        ? `Движок скачан, нужна модель ${size}`
-        : 'Движок не скачан';
+        ? `Движок ${engineLabel} скачан, нужна модель ${size}`
+        : `Движок ${engineLabel} не скачан`;
       btn.textContent = 'Скачать движок и модель';
     }
     btn.disabled = false;
@@ -1238,7 +1283,13 @@ function bind() {
   });
 
   $('localSttModel').addEventListener('change', () => {
-    settings.localSttModel = $('localSttModel').value === 'small' ? 'small' : 'base';
+    settings.localSttModel = localModelId($('localSttModel').value);
+    refreshLocalStatus();
+    scheduleSave();
+  });
+
+  $('localSttGpu').addEventListener('change', () => {
+    settings.localSttGpu = $('localSttGpu').checked;
     refreshLocalStatus();
     scheduleSave();
   });
@@ -1257,7 +1308,7 @@ function bind() {
     wrap.hidden = false;
     bar.style.width = '0%';
 
-    const size = settings.localSttModel === 'small' ? 'small' : 'base';
+    const size = localModelId(settings.localSttModel);
 
     try {
       const result = await window.api.localSttDownload(size);
@@ -1416,6 +1467,13 @@ function bind() {
     });
   }
 
+  const helpBtn = $('helpBtn');
+  if (helpBtn) {
+    helpBtn.addEventListener('click', () => {
+      if (appConfig.helpUrl) window.api.openExternal(appConfig.helpUrl);
+    });
+  }
+
   const checkUpdatesBtn = $('checkUpdatesBtn');
   if (checkUpdatesBtn) checkUpdatesBtn.addEventListener('click', checkUpdates);
 
@@ -1494,6 +1552,7 @@ async function boot() {
       appConfig = {
         donateUrl: info.donateUrl || '',
         supportEmail: info.supportEmail || 'softpuff@ya.ru',
+        helpUrl: info.helpUrl || 'https://ali-handro.github.io/pomogator/#faq',
       };
 
       window.api.onDisplaysChanged(async () => {

@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('api', {
   captureSolve: (mode) => ipcRenderer.invoke('vision:capture', { mode }),
   captureWarmup: () => ipcRenderer.invoke('vision:warmup'),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
+  saveText: (payload) => ipcRenderer.invoke('file:save-text', payload),
   abort: () => ipcRenderer.send('llm:abort'),
   onLlmStart: (cb) => subscribe('llm:start', cb),
   onLlmDelta: (cb) => subscribe('llm:delta', cb),
@@ -63,6 +64,7 @@ contextBridge.exposeInMainWorld('api', {
 
   /* локальное распознавание (whisper.cpp) */
   localSttStatus: () => ipcRenderer.invoke('localStt:status'),
+  localSttGpuInfo: () => ipcRenderer.invoke('localStt:gpu'),
   localSttDownload: (model) => ipcRenderer.invoke('localStt:download', { model }),
   localSttCancel: () => ipcRenderer.invoke('localStt:cancel'),
   onLocalSttProgress: (cb) => subscribe('localStt:progress', cb),

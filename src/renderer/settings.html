@@ -281,13 +281,24 @@
               <select id="localSttModel">
                 <option value="base">base — быстрая, ~60 МБ</option>
                 <option value="small">small — точнее, ~190 МБ</option>
+                <option value="medium">medium — ещё точнее, ~540 МБ</option>
+                <option value="large">large-v3-turbo — максимум, ~575 МБ</option>
               </select>
               <span class="hint">
                 Движок и модель скачиваются один раз в папку приложения и работают
                 без интернета. Модель остаётся в памяти, поэтому паузы между
-                вопросами нет — только время самого распознавания.
+                вопросами нет — только время самого распознавания. Чем больше модель,
+                тем точнее и медленнее.
               </span>
             </label>
+
+            <label class="check">
+              <input type="checkbox" id="localSttGpu" />
+              <span>Использовать GPU NVIDIA (CUDA)</span>
+            </label>
+            <span class="hint" id="localSttGpuHint">
+              Проверяю видеокарту…
+            </span>
 
             <div class="test-row">
               <button type="button" class="ghost test-btn" id="localSttDownloadBtn">
@@ -328,6 +339,19 @@
             <span class="hint">
               Текст получает модель вместе с вопросом, а также распознавание речи. Так она
               понимает тему и восстанавливает плохо расслышанные слова по смыслу.
+            </span>
+          </label>
+          <label class="field">
+            <span class="label">Словарь терминов</span>
+            <textarea
+              id="terms"
+              data-key="terms"
+              rows="3"
+              placeholder="Selenium, Cucumber, Kafka, Camunda, Page Object, REST Assured…"
+            ></textarea>
+            <span class="hint">
+              Эти слова добавляются в подсказку распознавания и в контекст модели.
+              Помогает не терять технические термины и фамилии.
             </span>
           </label>
           <label class="field">
@@ -386,6 +410,21 @@
             </label>
           </div>
 
+          <label class="field">
+            <span class="label">
+              Масштаб текста
+              <span class="value" id="overlayFontScaleValue">100%</span>
+            </span>
+            <input
+              type="range"
+              id="overlayFontScale"
+              data-key="overlayFontScale"
+              min="0.85"
+              max="1.4"
+              step="0.05"
+            />
+          </label>
+
           <label class="check">
             <input type="checkbox" id="clickThrough" data-key="clickThrough" />
             <span>Пропускать клики сквозь окно (режим подсказок)</span>
@@ -420,6 +459,7 @@
           <div class="about-row">
             <span class="hint" id="updateHint">Проверка обновлений</span>
             <span class="about-actions">
+              <button type="button" class="ghost test-btn" id="helpBtn">Помощь</button>
               <button type="button" class="ghost test-btn" id="copyDiagnosticsBtn">
                 Скопировать диагностику
               </button>

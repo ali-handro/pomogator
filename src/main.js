@@ -16,6 +16,7 @@ const {
   clipboard,
   safeStorage,
   Notification,
+  dialog,
 } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
@@ -105,10 +106,12 @@ const DEFAULT_SETTINGS = {
   overlayDisplay: 0,
   overlayWidth: 980,
   overlayHeight: 232,
+  overlayFontScale: 1,
   overlayPos: null,
   resume: '',
   job: '',
   contextPrompt: '',
+  terms: '',
   /* распознавание речи */
   sttProvider: 'cloudflare', // устарело
   sttModel: '@cf/deepgram/nova-3', // устарело
@@ -121,6 +124,7 @@ const DEFAULT_SETTINGS = {
     language: 'ru',
   },
   localSttModel: 'base',
+  localSttGpu: false,
   autoAnswer: true,
   listen: false,
   silenceMs: 450,
@@ -329,6 +333,16 @@ function persist() {
 function needsSetup() {
   const ai = aiConfig();
   return !ai.baseUrl || !ai.model;
+}
+
+/** Подсказка для распознавания: контекст разговора + словарь терминов. */
+function speechPrompt(settings) {
+  const context = String(settings.contextPrompt || '').trim();
+  const terms = String(settings.terms || '').trim();
+  return [context, terms ? `Термины: ${terms}` : '']
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 700);
 }
 
 /** Своё подключение к модели: адрес, ключ, модель, Account ID. */
@@ -1297,7 +1311,7 @@ function warmUp() {
   // Локальный движок держит модель в памяти: поднимаем заранее, чтобы первый
   // вопрос не ждал ещё и загрузку модели.
   if (settings.sttProvider === 'local') {
-    localStt.ensureServer(settings.localSttModel).catch(() => {});
+    localStt.ensureServer(settings.localSttModel, settings.localSttGpu).catch(() => {});
     return;
   }
 
@@ -1353,7 +1367,7 @@ function runStt(model, audio, signal) {
     model,
     audio,
     language: settings.language === 'en' ? 'en' : 'ru',
-    initialPrompt: settings.contextPrompt,
+    initialPrompt: speechPrompt(settings),
     signal,
   });
 }
@@ -1466,6 +1480,7 @@ function registerIpc() {
     const prevSttModel = settings.sttModel;
     const prevSttProvider = settings.sttProvider;
     const prevLocalModel = settings.localSttModel;
+    const prevLocalGpu = !!settings.localSttGpu;
 
     // Позицию окна знает только главный процесс — не даём рендереру её затереть.
     const incoming = { ...(patch || {}) };
@@ -1479,6 +1494,10 @@ function registerIpc() {
     settings.overlayDisplay = Math.max(0, Number(settings.overlayDisplay) || 0);
     settings.overlayWidth = Math.min(1600, Math.max(560, Number(settings.overlayWidth) || 980));
     settings.overlayHeight = Math.min(520, Math.max(160, Number(settings.overlayHeight) || 232));
+    settings.overlayFontScale = Math.min(
+      1.4,
+      Math.max(0.85, Number(settings.overlayFontScale) || 1)
+    );
     settings.opacity = Math.min(1, Math.max(0.3, Number(settings.opacity) || 0.94));
     settings.audioSource = settings.audioSource === 'system' ? 'system' : 'mic';
     settings.cloudflareAccount = normalizeAccountId(settings.cloudflareAccount);
@@ -1499,7 +1518,8 @@ function registerIpc() {
     // Сменили локальную модель или источник — перезапустим движок лениво.
     if (
       settings.sttProvider !== prevSttProvider ||
-      settings.localSttModel !== prevLocalModel
+      settings.localSttModel !== prevLocalModel ||
+      !!settings.localSttGpu !== prevLocalGpu
     ) {
       localStt.stopServer();
     }
@@ -1524,6 +1544,42 @@ function registerIpc() {
     return { ok: true };
   });
 
+  ipcMain.handle('file:save-text', async (_event, payload) => {
+    const content = String((payload && payload.content) || '');
+    const name = String((payload && payload.name) || 'pomogator-answers.md')
+      .replace(/[\\/:*?"<>|]/g, '-')
+      .slice(0, 100);
+
+    const parent =
+      overlayWin && !overlayWin.isDestroyed()
+        ? overlayWin
+        : settingsWin && !settingsWin.isDestroyed()
+          ? settingsWin
+          : null;
+
+    const options = {
+      defaultPath: path.join(app.getPath('documents'), name),
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Текстовый файл', extensions: ['txt'] },
+        { name: 'Все файлы', extensions: ['*'] },
+      ],
+    };
+
+    const result = parent
+      ? await dialog.showSaveDialog(parent, options)
+      : await dialog.showSaveDialog(options);
+
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+
+    try {
+      fs.writeFileSync(result.filePath, content, 'utf8');
+      return { ok: true, path: result.filePath };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('displays:get', () => {
     const primaryId = screen.getPrimaryDisplay().id;
     return screen.getAllDisplays().map((display, index) => ({
@@ -1543,6 +1599,7 @@ function registerIpc() {
     userData: app.getPath('userData'),
     donateUrl: appConfig.donateUrl || '',
     supportEmail: appConfig.supportEmail || '',
+    helpUrl: appConfig.helpUrl || '',
   }));
 
   ipcMain.handle('providers:get', () => PROVIDERS);
@@ -1807,7 +1864,11 @@ function registerIpc() {
     const override = payload && payload.override;
     if (override && (override.provider === 'local' || override.mode === 'local')) {
       try {
-        const text = await localStt.transcribe(audio, settings.localSttModel);
+        const text = await localStt.transcribe(
+          audio,
+          settings.localSttModel,
+          settings.localSttGpu
+        );
         return { ok: true, text, model: 'local' };
       } catch (err) {
         if (err.name === 'AbortError') return { ok: false, aborted: true };
@@ -1828,7 +1889,11 @@ function registerIpc() {
 
       if (sttMode === 'local') {
         try {
-          const text = await localStt.transcribe(audio, settings.localSttModel);
+          const text = await localStt.transcribe(
+            audio,
+            settings.localSttModel,
+            settings.localSttGpu
+          );
           return { ok: true, text, model: 'local' };
         } catch (err) {
           if (err.name === 'AbortError') return { ok: false, aborted: true };
@@ -1849,7 +1914,7 @@ function registerIpc() {
         apiKey: (settings.keys && settings.keys.stt) || '',
         model: stt.model,
         language: stt.language || settings.language || 'ru',
-        initialPrompt: settings.contextPrompt || '',
+        initialPrompt: speechPrompt(settings),
         audio,
         signal: controller.signal,
       });
@@ -1865,8 +1930,10 @@ function registerIpc() {
 
   ipcMain.handle('localStt:status', () => localStt.status(settings));
 
+  ipcMain.handle('localStt:gpu', () => localStt.gpuInfo());
+
   ipcMain.handle('localStt:download', async (event, payload) => {
-    const size = payload && payload.model === 'small' ? 'small' : 'base';
+    const size = localStt.normalizeSize(payload && payload.model);
     const send = (data) => {
       const target = event.sender;
       if (target && !target.isDestroyed()) target.send('localStt:progress', data);
@@ -1875,7 +1942,11 @@ function registerIpc() {
       }
     };
 
-    const result = await localStt.download({ size, onProgress: send });
+    const result = await localStt.download({
+      size,
+      gpu: !!settings.localSttGpu,
+      onProgress: send,
+    });
     // Новая модель подхватится при следующем запросе.
     if (result.ok) localStt.stopServer();
     return result;
@@ -1892,11 +1963,11 @@ function registerIpc() {
     const stt = settings.stt || {};
 
     if (stt.mode === 'local') {
-      const size = settings.localSttModel === 'small' ? 'small' : 'base';
+      const size = localStt.normalizeSize(settings.localSttModel);
       const started = Date.now();
 
       try {
-        await localStt.transcribe(silentWav(400), size);
+        await localStt.transcribe(silentWav(400), size, settings.localSttGpu);
         return { ok: true, model: 'local', label: `Локально (${size})`, ms: Date.now() - started };
       } catch (err) {
         return { ok: false, error: err.message };

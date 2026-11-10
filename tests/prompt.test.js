@@ -35,6 +35,15 @@ test('контекст, опыт и вакансия попадают в сис�
   assert.match(system, /Java QA/);
 });
 
+test('словарь терминов попадает в системное сообщение', () => {
+  const messages = buildMessages({
+    question: 'Что такое Page Object?',
+    settings: { terms: 'Selenium, Cucumber, Page Object' },
+  });
+
+  assert.match(messages[0].content, /Selenium, Cucumber, Page Object/);
+});
+
 test('история ограничена последними четырьмя парами', () => {
   const history = Array.from({ length: 6 }, (_, index) => ({
     question: `Вопрос ${index}`,

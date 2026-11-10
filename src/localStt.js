@@ -16,7 +16,18 @@ const { app, net: electronNet } = require('electron');
  */
 
 const ENGINE_BUILD = 'b5454';
-const ENGINE_URL = `https://github.com/ggml-org/whisper.cpp/releases/download/${ENGINE_BUILD}/whisper-bin-x64.zip`;
+const ENGINE_VARIANTS = {
+  cpu: {
+    url: `https://github.com/ggml-org/whisper.cpp/releases/download/${ENGINE_BUILD}/whisper-bin-x64.zip`,
+    dir: 'engine',
+    label: 'CPU',
+  },
+  cuda: {
+    url: `https://github.com/ggml-org/whisper.cpp/releases/download/${ENGINE_BUILD}/whisper-bin-win-cuda-12.4.0-x64.zip`,
+    dir: 'engine-cuda',
+    label: 'NVIDIA CUDA 12.4',
+  },
+};
 
 const MODELS = {
   base: {
@@ -31,14 +42,30 @@ const MODELS = {
     file: 'ggml-small-q5_1.bin',
     url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin',
   },
+  medium: {
+    label: 'medium — ещё точнее',
+    hint: '≈540 МБ, медленнее small',
+    file: 'ggml-medium-q5_0.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin',
+  },
+  large: {
+    label: 'large-v3-turbo — максимум',
+    hint: '≈575 МБ, нужен мощный CPU или GPU',
+    file: 'ggml-large-v3-turbo-q5_0.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin',
+  },
 };
+
+function normalizeSize(value) {
+  return MODELS[value] ? value : 'base';
+}
 
 function rootDir() {
   return path.join(app.getPath('userData'), 'whisper');
 }
 
-function engineDir() {
-  return path.join(rootDir(), 'engine');
+function engineDir(gpu = false) {
+  return path.join(rootDir(), gpu ? ENGINE_VARIANTS.cuda.dir : ENGINE_VARIANTS.cpu.dir);
 }
 
 function modelDir() {
@@ -67,8 +94,27 @@ function findServerExe(dir) {
   return null;
 }
 
-function serverExe() {
-  return findServerExe(engineDir());
+function serverExe(gpu = false) {
+  return findServerExe(engineDir(gpu));
+}
+
+function gpuInfo() {
+  try {
+    const result = spawnSync(
+      'nvidia-smi',
+      ['--query-gpu=name', '--format=csv,noheader'],
+      { windowsHide: true, encoding: 'utf8', timeout: 5000 }
+    );
+
+    if (result.status === 0) {
+      const name = String(result.stdout || '').trim().split(/\r?\n/)[0];
+      if (name) return { available: true, name };
+    }
+  } catch {
+    /* nvidia-smi недоступен */
+  }
+
+  return { available: false, name: '' };
 }
 
 function modelReady(size) {
@@ -82,12 +128,14 @@ function modelReady(size) {
 }
 
 function status(settings) {
-  const size = settings && settings.localSttModel === 'small' ? 'small' : 'base';
-  const exe = serverExe();
+  const size = normalizeSize(settings && settings.localSttModel);
+  const gpu = !!(settings && settings.localSttGpu);
   return {
-    engine: !!exe,
+    engine: !!serverExe(gpu),
     model: modelReady(size),
     modelSize: size,
+    gpu,
+    gpuEngine: !!serverExe(true),
     running: !!server && serverPort > 0,
     models: Object.entries(MODELS).map(([id, info]) => ({
       id,
@@ -161,26 +209,28 @@ function extractZip(zip, target) {
   }
 }
 
-async function download({ size = 'base', onProgress } = {}) {
-  const model = MODELS[size] || MODELS.base;
+async function download({ size = 'base', gpu = false, onProgress } = {}) {
+  const wanted = normalizeSize(size);
+  const model = MODELS[wanted];
+  const variant = gpu ? ENGINE_VARIANTS.cuda : ENGINE_VARIANTS.cpu;
   downloadJob = { cancelled: false };
 
   try {
-    if (!serverExe()) {
-      const zip = path.join(rootDir(), 'whisper-engine.zip');
+    if (!serverExe(gpu)) {
+      const zip = path.join(rootDir(), `whisper-engine-${gpu ? 'cuda' : 'cpu'}.zip`);
       if (onProgress) onProgress({ stage: 'engine', received: 0, total: 0 });
-      await downloadFile(ENGINE_URL, zip, (received, total) => {
+      await downloadFile(variant.url, zip, (received, total) => {
         if (onProgress) onProgress({ stage: 'engine', received, total });
       });
       if (downloadJob.cancelled) throw new Error('Скачивание отменено');
       if (onProgress) onProgress({ stage: 'unpack', received: 0, total: 0 });
-      extractZip(zip, engineDir());
+      extractZip(zip, engineDir(gpu));
       fs.unlinkSync(zip);
     }
 
-    if (!modelReady(size)) {
+    if (!modelReady(wanted)) {
       if (onProgress) onProgress({ stage: 'model', received: 0, total: 0 });
-      await downloadFile(model.url, modelPath(size), (received, total) => {
+      await downloadFile(model.url, modelPath(wanted), (received, total) => {
         if (onProgress) onProgress({ stage: 'model', received, total });
       });
     }
@@ -254,12 +304,13 @@ function stopServer() {
   starting = null;
 }
 
-async function ensureServer(size) {
-  const wanted = size === 'small' ? 'small' : 'base';
-  if (server && !server.killed && serverPort && serverModel === wanted) return serverPort;
+async function ensureServer(size, gpu = false) {
+  const wanted = normalizeSize(size);
+  const key = `${wanted}:${gpu ? 'cuda' : 'cpu'}`;
+  if (server && !server.killed && serverPort && serverModel === key) return serverPort;
   if (starting) return starting;
 
-  const exe = serverExe();
+  const exe = serverExe(gpu);
   if (!exe) throw new Error('Локальный движок не скачан');
   if (!modelReady(wanted)) throw new Error('Локальная модель не скачана');
 
@@ -287,7 +338,7 @@ async function ensureServer(size) {
       windowsHide: true,
       stdio: 'ignore',
     });
-    serverModel = wanted;
+    serverModel = key;
     server.on('exit', () => {
       server = null;
       serverPort = 0;
@@ -306,8 +357,8 @@ async function ensureServer(size) {
   }
 }
 
-async function transcribe(audio, size) {
-  const port = await ensureServer(size);
+async function transcribe(audio, size, gpu = false) {
+  const port = await ensureServer(size, gpu);
   const form = new FormData();
   form.append('file', new Blob([audio], { type: 'audio/wav' }), 'chunk.wav');
   form.append('temperature', '0');
@@ -330,6 +381,8 @@ async function transcribe(audio, size) {
 
 module.exports = {
   MODELS,
+  normalizeSize,
+  gpuInfo,
   status,
   download,
   cancelDownload,

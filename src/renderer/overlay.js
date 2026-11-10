@@ -39,6 +39,7 @@ const el = {
   btnCapture: document.getElementById('btnCapture'),
   btnReview: document.getElementById('btnReview'),
   btnCopy: document.getElementById('btnCopy'),
+  btnExport: document.getElementById('btnExport'),
   toast: document.getElementById('toast'),
   histCount: document.getElementById('histCount'),
   btnRegen: document.getElementById('btnRegen'),
@@ -499,6 +500,42 @@ async function copyAnswer() {
   } catch (err) {
     console.error('[copy]', err);
     showToast('Не удалось скопировать');
+  }
+}
+
+async function exportAnswers() {
+  if (!answerHistory.length) {
+    showToast('История пуста');
+    return;
+  }
+
+  const now = new Date();
+  const stamp = now.toISOString().slice(0, 10);
+  const lines = ['# Помогатор — ответы', '', `Дата: ${now.toLocaleString('ru-RU')}`, ''];
+
+  answerHistory.forEach((entry, index) => {
+    lines.push(`## ${index + 1}. ${entry.question || 'Без вопроса'}`);
+    lines.push('');
+
+    if (entry.answer) lines.push(entry.answer);
+    else if (entry.error) lines.push(`Ошибка: ${entry.error}`);
+    else lines.push('—');
+
+    lines.push('');
+  });
+
+  try {
+    const result = await window.api.saveText({
+      name: `pomogator-answers-${stamp}.md`,
+      content: lines.join('\n'),
+    });
+
+    if (result && result.ok) showToast('Сохранено');
+    else if (result && result.canceled) showToast('Отменено');
+    else showToast('Не удалось сохранить');
+  } catch (err) {
+    console.error('[export]', err);
+    showToast('Не удалось сохранить');
   }
 }
 
@@ -993,6 +1030,10 @@ function applySettings() {
 
   const alpha = Math.min(1, Math.max(0.3, Number(settings.opacity) || 0.94));
   document.documentElement.style.setProperty('--panel-alpha', String(alpha));
+
+  const fontScale = Math.min(1.4, Math.max(0.85, Number(settings.overlayFontScale) || 1));
+  document.documentElement.style.setProperty('--font-scale', String(fontScale));
+
   renderSourceButton();
   renderMicButton();
 
@@ -1116,6 +1157,7 @@ function bindUi() {
     });
   }
   if (el.btnCopy) el.btnCopy.addEventListener('click', copyAnswer);
+  if (el.btnExport) el.btnExport.addEventListener('click', exportAnswers);
   el.btnClear.addEventListener('click', clearCurrent);
   el.btnHide.addEventListener('click', () => {
     if (hasApi) window.api.hideOverlay();

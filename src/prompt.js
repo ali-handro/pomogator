@@ -19,6 +19,7 @@ function buildMessages({ question, settings, history = [] }) {
   const resume = (settings.resume || '').trim();
   const job = (settings.job || '').trim();
   const context = (settings.contextPrompt || '').trim().slice(0, 4000);
+  const terms = (settings.terms || '').trim().slice(0, 1000);
   const words = Number(settings.answerWords) || 45;
 
   const system = [
@@ -37,6 +38,7 @@ function buildMessages({ question, settings, history = [] }) {
       : '',
     resume ? `Опыт пользователя:\n${resume}` : '',
     job ? `Контекст и требования:\n${job}` : '',
+    terms ? `Термины и названия, которые важно знать:\n${terms}` : '',
   ]
     .filter(Boolean)
     .join('\n');
