@@ -125,6 +125,7 @@ const DEFAULT_SETTINGS = {
   },
   localSttModel: 'base',
   localSttGpu: false,
+  autoUpdateDownload: false,
   autoAnswer: true,
   listen: false,
   silenceMs: 450,
@@ -1436,12 +1437,16 @@ function setupAutoUpdater() {
 
   updateSupported = true;
 
-  autoUpdater.autoDownload = true;
+  autoUpdater.autoDownload = !!settings.autoUpdateDownload;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => sendUpdateStatus({ state: 'checking' }));
   autoUpdater.on('update-available', (info) =>
-    sendUpdateStatus({ state: 'available', version: info.version })
+    sendUpdateStatus({
+      state: 'available',
+      version: info.version,
+      autoDownload: !!settings.autoUpdateDownload,
+    })
   );
   autoUpdater.on('update-not-available', () => sendUpdateStatus({ state: 'none' }));
   autoUpdater.on('download-progress', (progress) =>
@@ -1494,6 +1499,8 @@ function registerIpc() {
     );
     settings.opacity = Math.min(1, Math.max(0.3, Number(settings.opacity) || 0.94));
     settings.audioSource = settings.audioSource === 'system' ? 'system' : 'mic';
+    settings.autoUpdateDownload = !!settings.autoUpdateDownload;
+    autoUpdater.autoDownload = settings.autoUpdateDownload;
     settings.cloudflareAccount = normalizeAccountId(settings.cloudflareAccount);
     if (settings.keys) {
       settings.keys = Object.fromEntries(
@@ -1601,6 +1608,8 @@ function registerIpc() {
   ipcMain.handle('updates:check', () => checkForUpdates());
 
   ipcMain.handle('updates:auto-check', async () => {
+    autoUpdater.autoDownload = !!settings.autoUpdateDownload;
+
     if (!updateSupported) return { ok: true, supported: false };
 
     try {
@@ -1619,6 +1628,17 @@ function registerIpc() {
     if (!updateSupported) return { ok: false, supported: false };
     setImmediate(() => autoUpdater.quitAndInstall(false, true));
     return { ok: true };
+  });
+
+  ipcMain.handle('updates:auto-download', async () => {
+    if (!updateSupported) return { ok: false, supported: false };
+
+    try {
+      await autoUpdater.downloadUpdate();
+      return { ok: true, supported: true };
+    } catch (err) {
+      return { ok: false, supported: true, error: err.message };
+    }
   });
 
   ipcMain.handle('updates:auto-status', () => ({

@@ -40,6 +40,7 @@ let settings = {
   terms: '',
   localSttModel: 'base',
   localSttGpu: false,
+  autoUpdateDownload: false,
 };
 
 let displays = [];
@@ -50,6 +51,7 @@ let lastHotkeyStatus = { failed: [] };
 let appConfig = { donateUrl: '', supportEmail: 'softpuff@ya.ru', helpUrl: '' };
 let autoUpdateSupported = false;
 let autoUpdateReady = false;
+let autoUpdateAvailable = false;
 let availableUpdate = null;
 
 const LOCAL_MODEL_IDS = ['base', 'small', 'medium', 'large'];
@@ -829,33 +831,47 @@ function handleUpdateStatus(status) {
 
   switch (status.state) {
     case 'checking':
+      autoUpdateAvailable = false;
       setUpdateButton('busy', 'Проверяю…');
       if (hint) hint.textContent = 'Проверяю обновление…';
       break;
     case 'available':
       autoUpdateReady = false;
-      setUpdateButton('busy', `Скачиваю ${status.version}…`);
-      if (hint) hint.textContent = `Доступна версия ${status.version}, скачиваю…`;
+      if (status.autoDownload) {
+        autoUpdateAvailable = false;
+        setUpdateButton('busy', `Скачиваю ${status.version}…`);
+        if (hint) hint.textContent = `Доступна версия ${status.version}, скачиваю…`;
+      } else {
+        autoUpdateAvailable = true;
+        setUpdateButton('ready', 'Скачать обновление');
+        if (hint) {
+          hint.textContent = `Доступна версия ${status.version}. Скачивание отключено в настройках.`;
+        }
+      }
       break;
     case 'downloading':
       autoUpdateReady = false;
+      autoUpdateAvailable = false;
       setUpdateButton('busy', `Скачиваю… ${status.percent || 0}%`);
       if (hint) hint.textContent = `Скачиваю обновление… ${status.percent || 0}%`;
       break;
     case 'ready':
       autoUpdateReady = true;
+      autoUpdateAvailable = false;
       availableUpdate = null;
       setUpdateButton('ready', 'Установить обновление');
       if (hint) hint.textContent = `Обновление ${status.version} готово.`;
       break;
     case 'none':
       autoUpdateReady = false;
+      autoUpdateAvailable = false;
       availableUpdate = null;
       setUpdateButton('idle', 'Проверить обновления');
       if (hint) hint.textContent = 'У вас последняя версия.';
       break;
     case 'error':
       autoUpdateReady = false;
+      autoUpdateAvailable = false;
       setUpdateButton('idle', 'Проверить обновления');
       if (hint) hint.textContent = status.message || 'Не удалось проверить обновление.';
       break;
@@ -911,7 +927,8 @@ async function checkUpdates({ silent = false } = {}) {
     } else if (result && result.update) {
       availableUpdate = result.update;
       autoUpdateReady = false;
-      setUpdateButton('ready', 'Установить обновление');
+      autoUpdateAvailable = false;
+      setUpdateButton('ready', 'Скачать обновление');
       if (hint) hint.textContent = `Доступна версия ${result.update.version}.`;
     } else {
       availableUpdate = null;
@@ -936,6 +953,24 @@ async function onUpdateButton() {
       }
     } catch (err) {
       setUpdateButton('ready', 'Установить обновление');
+      if (hint) hint.textContent = err.message;
+    }
+    return;
+  }
+
+  if (autoUpdateAvailable) {
+    const hint = $('updateHint');
+    setUpdateButton('busy', 'Скачиваю…');
+    try {
+      const result = await window.api.autoUpdateDownload();
+      if (!result || !result.ok) {
+        autoUpdateAvailable = true;
+        setUpdateButton('ready', 'Скачать обновление');
+        if (hint) hint.textContent = (result && result.error) || 'Не удалось скачать обновление.';
+      }
+    } catch (err) {
+      autoUpdateAvailable = true;
+      setUpdateButton('ready', 'Скачать обновление');
       if (hint) hint.textContent = err.message;
     }
     return;
