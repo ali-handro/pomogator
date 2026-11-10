@@ -916,9 +916,7 @@ async function checkUpdates({ silent = false } = {}) {
     } else {
       availableUpdate = null;
       setUpdateButton('idle', 'Проверить обновления');
-      if (!silent) {
-        if (hint) hint.textContent = 'У вас последняя версия.';
-      }
+      if (hint) hint.textContent = 'У вас последняя версия.';
     }
   } catch (err) {
     setUpdateButton('idle', 'Проверить обновления');
