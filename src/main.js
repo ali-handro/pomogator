@@ -1460,12 +1460,6 @@ function setupAutoUpdater() {
   autoUpdater.on('error', (err) =>
     sendUpdateStatus({ state: 'error', message: err.message })
   );
-
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.warn('[update] check failed:', err.message);
-    });
-  }, 12000);
 }
 
 function registerIpc() {

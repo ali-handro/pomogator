@@ -852,6 +852,19 @@ kbd {
   justify-content: flex-end;
 }
 
+#checkUpdatesBtn.update-ready {
+  font-weight: 650;
+  color: #0b0f16;
+  background: linear-gradient(135deg, #35d399, #7ce7c1);
+  border: 0;
+  box-shadow: 0 8px 24px rgba(53, 211, 153, 0.35);
+}
+
+#checkUpdatesBtn.update-ready:hover:not(:disabled) {
+  filter: brightness(1.07);
+  box-shadow: 0 10px 28px rgba(53, 211, 153, 0.45);
+}
+
 .check-actions {
   display: flex;
   flex-wrap: wrap;

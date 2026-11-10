@@ -49,6 +49,8 @@ let lastHotkeyStatus = { failed: [] };
 
 let appConfig = { donateUrl: '', supportEmail: 'softpuff@ya.ru', helpUrl: '' };
 let autoUpdateSupported = false;
+let autoUpdateReady = false;
+let availableUpdate = null;
 
 const LOCAL_MODEL_IDS = ['base', 'small', 'medium', 'large'];
 
@@ -811,32 +813,50 @@ async function checkAll() {
   }
 }
 
+function setUpdateButton(state, label) {
+  const button = $('checkUpdatesBtn');
+  if (!button) return;
+
+  button.classList.toggle('update-ready', state === 'ready');
+  button.disabled = state === 'busy';
+  button.textContent = label;
+}
+
 function handleUpdateStatus(status) {
   if (!status) return;
 
   const hint = $('updateHint');
-  const install = $('updateInstallBtn');
-
-  if (install && status.state !== 'ready') install.hidden = true;
 
   switch (status.state) {
     case 'checking':
+      setUpdateButton('busy', 'Проверяю…');
       if (hint) hint.textContent = 'Проверяю обновление…';
       break;
     case 'available':
+      autoUpdateReady = false;
+      setUpdateButton('busy', `Скачиваю ${status.version}…`);
       if (hint) hint.textContent = `Доступна версия ${status.version}, скачиваю…`;
       break;
     case 'downloading':
+      autoUpdateReady = false;
+      setUpdateButton('busy', `Скачиваю… ${status.percent || 0}%`);
       if (hint) hint.textContent = `Скачиваю обновление… ${status.percent || 0}%`;
       break;
     case 'ready':
-      if (hint) hint.textContent = `Обновление ${status.version} готово к установке.`;
-      if (install) install.hidden = false;
+      autoUpdateReady = true;
+      availableUpdate = null;
+      setUpdateButton('ready', 'Установить обновление');
+      if (hint) hint.textContent = `Обновление ${status.version} готово.`;
       break;
     case 'none':
+      autoUpdateReady = false;
+      availableUpdate = null;
+      setUpdateButton('idle', 'Проверить обновления');
       if (hint) hint.textContent = 'У вас последняя версия.';
       break;
     case 'error':
+      autoUpdateReady = false;
+      setUpdateButton('idle', 'Проверить обновления');
       if (hint) hint.textContent = status.message || 'Не удалось проверить обновление.';
       break;
     default:
@@ -845,39 +865,40 @@ function handleUpdateStatus(status) {
 }
 
 async function initAutoUpdate() {
-  if (!window.api.autoUpdateStatus) return;
+  if (!window.api.autoUpdateStatus) return false;
 
   try {
     const result = await window.api.autoUpdateStatus();
     if (result && result.supported) {
       autoUpdateSupported = true;
       handleUpdateStatus(result.status);
+      return true;
     }
   } catch {
     /* автообновление недоступно */
   }
+
+  return false;
 }
 
-async function checkUpdates() {
+async function checkUpdates({ silent = false } = {}) {
   const hint = $('updateHint');
-  const button = $('checkUpdatesBtn');
   if (!hasApi || !window.api.checkUpdates) return;
 
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Проверяю…';
+  if (!silent) {
+    setUpdateButton('busy', 'Проверяю…');
+    if (hint) hint.textContent = 'Проверяю обновления…';
   }
-  if (hint) hint.textContent = 'Проверяю обновления…';
 
   try {
-    // Установленная версия обновляется сама; portable проверяет JSON и
-    // открывает страницу загрузки.
+    // Установленная версия обновляется сама; portable проверяет JSON.
     const auto = window.api.autoUpdateCheck ? await window.api.autoUpdateCheck() : null;
 
     if (auto && auto.supported) {
       autoUpdateSupported = true;
-      if (!auto.ok && hint) {
-        hint.textContent = auto.error || 'Не удалось проверить обновление.';
+      if (!auto.ok) {
+        setUpdateButton('idle', 'Проверить обновления');
+        if (hint) hint.textContent = auto.error || 'Не удалось проверить обновление.';
       }
       return;
     }
@@ -885,23 +906,52 @@ async function checkUpdates() {
     const result = await window.api.checkUpdates();
 
     if (result && result.skipped) {
-      if (hint) hint.textContent = 'Обновления пока не настроены.';
+      setUpdateButton('idle', 'Проверить обновления');
+      if (!silent && hint) hint.textContent = 'Обновления пока не настроены.';
     } else if (result && result.update) {
-      if (hint) {
-        hint.textContent = `Доступна версия ${result.update.version}. Открываю страницу загрузки…`;
-      }
-      if (result.update.url) window.api.openExternal(result.update.url);
+      availableUpdate = result.update;
+      autoUpdateReady = false;
+      setUpdateButton('ready', 'Установить обновление');
+      if (hint) hint.textContent = `Доступна версия ${result.update.version}.`;
     } else {
-      if (hint) hint.textContent = 'У вас последняя версия.';
+      availableUpdate = null;
+      setUpdateButton('idle', 'Проверить обновления');
+      if (!silent) {
+        if (hint) hint.textContent = 'У вас последняя версия.';
+      }
     }
   } catch (err) {
+    setUpdateButton('idle', 'Проверить обновления');
     if (hint) hint.textContent = err.message || 'Не удалось проверить обновления.';
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Проверить обновления';
-    }
   }
+}
+
+async function onUpdateButton() {
+  if (autoUpdateReady) {
+    const hint = $('updateHint');
+    setUpdateButton('busy', 'Устанавливаю…');
+    try {
+      const result = await window.api.autoUpdateInstall();
+      if (!result || !result.ok) {
+        setUpdateButton('ready', 'Установить обновление');
+        if (hint) hint.textContent = 'Не удалось запустить установку.';
+      }
+    } catch (err) {
+      setUpdateButton('ready', 'Установить обновление');
+      if (hint) hint.textContent = err.message;
+    }
+    return;
+  }
+
+  if (availableUpdate && availableUpdate.url) {
+    window.api.openExternal(availableUpdate.url);
+    if ($('updateHint')) {
+      $('updateHint').textContent = 'Открыл страницу загрузки. Замените файл приложения.';
+    }
+    return;
+  }
+
+  await checkUpdates();
 }
 
 async function copyDiagnostics() {
@@ -1475,24 +1525,7 @@ function bind() {
   }
 
   const checkUpdatesBtn = $('checkUpdatesBtn');
-  if (checkUpdatesBtn) checkUpdatesBtn.addEventListener('click', checkUpdates);
-
-  const updateInstallBtn = $('updateInstallBtn');
-  if (updateInstallBtn) {
-    updateInstallBtn.addEventListener('click', async () => {
-      updateInstallBtn.disabled = true;
-      try {
-        const result = await window.api.autoUpdateInstall();
-        if (!result || !result.ok) {
-          updateInstallBtn.disabled = false;
-          if ($('updateHint')) $('updateHint').textContent = 'Не удалось запустить установку.';
-        }
-      } catch (err) {
-        updateInstallBtn.disabled = false;
-        if ($('updateHint')) $('updateHint').textContent = err.message;
-      }
-    });
-  }
+  if (checkUpdatesBtn) checkUpdatesBtn.addEventListener('click', onUpdateButton);
 
   if (window.api.onUpdateStatus) window.api.onUpdateStatus(handleUpdateStatus);
 
@@ -1601,7 +1634,7 @@ async function boot() {
   enhanceSelects();
   fill();
   bind();
-  initAutoUpdate();
+  initAutoUpdate().then(() => checkUpdates({ silent: true }));
 
   const ai = settings.ai || {};
   if (!ai.baseUrl || !ai.model) {
