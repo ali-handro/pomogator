@@ -52,6 +52,7 @@ let appConfig = { donateUrl: '', supportEmail: 'softpuff@ya.ru', helpUrl: '' };
 let autoUpdateSupported = false;
 let autoUpdateReady = false;
 let autoUpdateAvailable = false;
+let autoUpdateDownloading = false;
 let availableUpdate = null;
 
 const LOCAL_MODEL_IDS = ['base', 'small', 'medium', 'large'];
@@ -848,10 +849,12 @@ function handleUpdateStatus(status) {
       showManualDownload(true);
       if (status.autoDownload) {
         autoUpdateAvailable = false;
+        autoUpdateDownloading = true;
         setUpdateButton('busy', `Скачиваю ${status.version}…`);
         if (hint) hint.textContent = `Доступна версия ${status.version}, скачиваю…`;
       } else {
         autoUpdateAvailable = true;
+        autoUpdateDownloading = false;
         setUpdateButton('ready', 'Скачать обновление');
         if (hint) {
           hint.textContent = `Доступна версия ${status.version}. Скачивание отключено в настройках.`;
@@ -861,6 +864,7 @@ function handleUpdateStatus(status) {
     case 'downloading':
       autoUpdateReady = false;
       autoUpdateAvailable = false;
+      autoUpdateDownloading = true;
       showManualDownload(false);
       setUpdateButton('busy', `Скачиваю… ${status.percent || 0}%`);
       if (hint) hint.textContent = `Скачиваю обновление… ${status.percent || 0}%`;
@@ -868,6 +872,7 @@ function handleUpdateStatus(status) {
     case 'ready':
       autoUpdateReady = true;
       autoUpdateAvailable = false;
+      autoUpdateDownloading = false;
       availableUpdate = null;
       showManualDownload(true);
       setUpdateButton('ready', 'Установить обновление');
@@ -876,6 +881,7 @@ function handleUpdateStatus(status) {
     case 'none':
       autoUpdateReady = false;
       autoUpdateAvailable = false;
+      autoUpdateDownloading = false;
       availableUpdate = null;
       showManualDownload(false);
       setUpdateButton('idle', 'Проверить обновления');
@@ -883,10 +889,20 @@ function handleUpdateStatus(status) {
       break;
     case 'error':
       autoUpdateReady = false;
-      autoUpdateAvailable = false;
       showManualDownload(true);
-      setUpdateButton('idle', 'Проверить обновления');
-      if (hint) hint.textContent = status.message || 'Не удалось проверить обновление.';
+      if (autoUpdateDownloading) {
+        // Скачивание оборвалось — даём повторить одной кнопкой.
+        autoUpdateDownloading = false;
+        autoUpdateAvailable = true;
+        setUpdateButton('ready', 'Скачать обновление');
+        if (hint) {
+          hint.textContent = `${status.message || 'Скачивание прервалось.'} Попробуйте ещё раз или нажмите «Скачать вручную».`;
+        }
+      } else {
+        autoUpdateAvailable = false;
+        setUpdateButton('idle', 'Проверить обновления');
+        if (hint) hint.textContent = status.message || 'Не удалось проверить обновление.';
+      }
       break;
     default:
       break;
@@ -973,15 +989,18 @@ async function onUpdateButton() {
 
   if (autoUpdateAvailable) {
     const hint = $('updateHint');
+    autoUpdateDownloading = true;
     setUpdateButton('busy', 'Скачиваю…');
     try {
       const result = await window.api.autoUpdateDownload();
       if (!result || !result.ok) {
+        autoUpdateDownloading = false;
         autoUpdateAvailable = true;
         setUpdateButton('ready', 'Скачать обновление');
         if (hint) hint.textContent = (result && result.error) || 'Не удалось скачать обновление.';
       }
     } catch (err) {
+      autoUpdateDownloading = false;
       autoUpdateAvailable = true;
       setUpdateButton('ready', 'Скачать обновление');
       if (hint) hint.textContent = err.message;
