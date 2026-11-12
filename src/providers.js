@@ -96,6 +96,7 @@ const REASONING_MODELS = new Set([
   'openai/gpt-oss-120b',
   'qwen/qwen3.6-27b',
   'gpt-oss-120b',
+  'glm-5.3-flash',
   'glm-5.3',
   'glm-5.2',
 ]);
@@ -211,9 +212,14 @@ async function streamChat({
         .replace(/\/+$/, '')
     : resolveBaseUrl(provider, accountId);
 
+  // Пользователь подключает OpenCode как «свой API», но модель и параметры
+  // остаются теми же — рассуждения нужно отключать так же.
+  const effectiveProviderId =
+    providerId === 'custom' && /opencode\.ai/i.test(resolvedBase) ? 'opencode' : providerId;
+
   const headers = { 'Content-Type': 'application/json' };
   if (!provider.noKey && apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  Object.assign(headers, extraHeaders(providerId) || {});
+  Object.assign(headers, extraHeaders(effectiveProviderId) || {});
 
   // OpenCode требует стабильный id сессии даже при своём адресе.
   if (/opencode\.ai/i.test(resolvedBase)) {
@@ -221,7 +227,7 @@ async function streamChat({
     headers['x-opencode-session'] = OPENCODE_SESSION_ID;
   }
 
-  const tweaks = reasoningTweaks(providerId, modelId);
+  const tweaks = reasoningTweaks(effectiveProviderId, modelId);
   const outputLimit = outputTokenLimit(modelId, maxTokens);
 
   const body = {

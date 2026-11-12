@@ -1,7 +1,7 @@
 {
   "name": "pomogator",
   "productName": "Pomogator",
-  "version": "0.32.0",
+  "version": "0.32.1",
   "description": "Помогатор",
   "main": "src/main.js",
   "author": "Alihandro",
