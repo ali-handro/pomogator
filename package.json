@@ -1,7 +1,7 @@
 {
   "name": "pomogator",
   "productName": "Pomogator",
-  "version": "0.32.1",
+  "version": "0.32.2",
   "description": "Помогатор",
   "main": "src/main.js",
   "author": "Alihandro",
@@ -73,7 +73,8 @@
     "nsis": {
       "artifactName": "Pomogator-Setup-${version}.exe",
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

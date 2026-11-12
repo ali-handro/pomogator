@@ -824,6 +824,13 @@ function setUpdateButton(state, label) {
   button.textContent = label;
 }
 
+const MANUAL_DOWNLOAD_URL = 'https://github.com/ali-handro/pomogator/releases/latest';
+
+function showManualDownload(show) {
+  const button = $('manualDownloadBtn');
+  if (button) button.hidden = !show;
+}
+
 function handleUpdateStatus(status) {
   if (!status) return;
 
@@ -832,11 +839,13 @@ function handleUpdateStatus(status) {
   switch (status.state) {
     case 'checking':
       autoUpdateAvailable = false;
+      showManualDownload(false);
       setUpdateButton('busy', 'Проверяю…');
       if (hint) hint.textContent = 'Проверяю обновление…';
       break;
     case 'available':
       autoUpdateReady = false;
+      showManualDownload(true);
       if (status.autoDownload) {
         autoUpdateAvailable = false;
         setUpdateButton('busy', `Скачиваю ${status.version}…`);
@@ -852,6 +861,7 @@ function handleUpdateStatus(status) {
     case 'downloading':
       autoUpdateReady = false;
       autoUpdateAvailable = false;
+      showManualDownload(false);
       setUpdateButton('busy', `Скачиваю… ${status.percent || 0}%`);
       if (hint) hint.textContent = `Скачиваю обновление… ${status.percent || 0}%`;
       break;
@@ -859,19 +869,22 @@ function handleUpdateStatus(status) {
       autoUpdateReady = true;
       autoUpdateAvailable = false;
       availableUpdate = null;
+      showManualDownload(true);
       setUpdateButton('ready', 'Установить обновление');
-      if (hint) hint.textContent = `Обновление ${status.version} готово.`;
+      if (hint) hint.textContent = `Обновление ${status.version} готово. Windows спросит разрешение.`;
       break;
     case 'none':
       autoUpdateReady = false;
       autoUpdateAvailable = false;
       availableUpdate = null;
+      showManualDownload(false);
       setUpdateButton('idle', 'Проверить обновления');
       if (hint) hint.textContent = 'У вас последняя версия.';
       break;
     case 'error':
       autoUpdateReady = false;
       autoUpdateAvailable = false;
+      showManualDownload(true);
       setUpdateButton('idle', 'Проверить обновления');
       if (hint) hint.textContent = status.message || 'Не удалось проверить обновление.';
       break;
@@ -1559,6 +1572,13 @@ function bind() {
 
   const checkUpdatesBtn = $('checkUpdatesBtn');
   if (checkUpdatesBtn) checkUpdatesBtn.addEventListener('click', onUpdateButton);
+
+  const manualDownloadBtn = $('manualDownloadBtn');
+  if (manualDownloadBtn) {
+    manualDownloadBtn.addEventListener('click', () => {
+      if (window.api.openExternal) window.api.openExternal(MANUAL_DOWNLOAD_URL);
+    });
+  }
 
   if (window.api.onUpdateStatus) window.api.onUpdateStatus(handleUpdateStatus);
 

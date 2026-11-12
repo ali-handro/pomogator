@@ -1438,7 +1438,9 @@ function setupAutoUpdater() {
   updateSupported = true;
 
   autoUpdater.autoDownload = !!settings.autoUpdateDownload;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // Обновление ставим только по кнопке: иначе Windows показывает UAC уже после
+  // закрытия приложения, пользователь отменяет — и обновление скачивается заново.
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on('checking-for-update', () => sendUpdateStatus({ state: 'checking' }));
   autoUpdater.on('update-available', (info) =>
@@ -1458,7 +1460,7 @@ function setupAutoUpdater() {
     if (Notification.isSupported()) {
       new Notification({
         title: 'Помогатор',
-        body: `Обновление ${info.version} готово. Установится при следующем запуске.`,
+        body: `Обновление ${info.version} скачано. Нажмите «Установить обновление» в настройках.`,
       }).show();
     }
   });
@@ -1626,7 +1628,9 @@ function registerIpc() {
 
   ipcMain.handle('updates:auto-install', () => {
     if (!updateSupported) return { ok: false, supported: false };
-    setImmediate(() => autoUpdater.quitAndInstall(false, true));
+    // Тихая установка: без мастера, установщик сам поднимает UAC и обновляет
+    // ту же папку (Program Files), что и текущая версия.
+    setImmediate(() => autoUpdater.quitAndInstall(true, true));
     return { ok: true };
   });
 
