@@ -42,7 +42,7 @@ function safeFile(name) {
   return base.endsWith('.json') ? base : `${base}.json`;
 }
 
-function createMeetingStore({ getSettings, streamChat, providerConfig, cloudChat }) {
+function createMeetingStore({ getSettings, streamChat }) {
   function save(payload) {
     try {
       const dir = meetingsDir();
@@ -71,35 +71,27 @@ function createMeetingStore({ getSettings, streamChat, providerConfig, cloudChat
     if (!entries.length) return { ok: false, error: 'Пустой транскрипт' };
 
     const settings = getSettings();
-    const providerId = settings.provider || 'cloudflare';
-    const provider = providerConfig(providerId);
-    const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
+    const ai = settings.ai || {};
+    const baseUrl = String(ai.baseUrl || '').trim();
+    const accountId = String(ai.accountId || '').trim();
+    const model = String(ai.model || '').trim();
+    const apiKey = (settings.keys && settings.keys.ai) || '';
 
-    if (!provider.noKey && !apiKey) return { ok: false, error: 'Нет ключа для модели' };
-    if (provider.needsAccount && !settings.cloudflareAccount) {
-      return { ok: false, error: 'Не указан Account ID Cloudflare' };
-    }
+    if (!baseUrl) return { ok: false, error: 'Не указан адрес API модели' };
+    if (!model) return { ok: false, error: 'Не указана модель' };
 
     const transcript = entries
       .map((entry) => `${formatTime(entry.t)} ${entry.speaker}: ${entry.text}`)
       .join('\n');
 
     const ask = async (messages, maxTokens, signal) => {
-      if (cloudChat) {
-        try {
-          const text = await cloudChat(messages, maxTokens);
-          if (text != null) return String(text).trim();
-        } catch (err) {
-          console.warn('[meeting] облачная выжимка не удалась:', err.message);
-        }
-      }
-
       let out = '';
       await streamChat({
-        providerId,
+        providerId: 'custom',
+        baseUrl,
         apiKey,
-        accountId: settings.cloudflareAccount || '',
-        model: settings.model,
+        accountId,
+        model,
         messages,
         maxTokens,
         temperature: 0.2,

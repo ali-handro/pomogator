@@ -22,8 +22,8 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
-const { PROVIDERS, providerConfig, resolveBaseUrl, streamChat, visionModel } = require('./providers');
-const { sttConfig, transcribe } = require('./stt');
+const { PROVIDERS, providerConfig, streamChat } = require('./providers');
+const { transcribe } = require('./stt');
 const localStt = require('./localStt');
 const { startWheelHook, stopWheelHook } = require('./wheel-hook');
 const { createHotkeys } = require('./hotkeys');
@@ -397,14 +397,11 @@ const screenshots = createScreenshotService({
   getSettings: () => settings,
   sendToOverlay,
   streamChat,
-  providerConfig,
-  visionModel,
 });
 
 const meetings = createMeetingStore({
   getSettings: () => settings,
   streamChat,
-  providerConfig,
 });
 
 /* ------------------------------------------------------------------ */
@@ -1294,129 +1291,44 @@ function silentWav(ms = 320, rate = 16000) {
  * воркер модели. Греем заранее, чтобы первый же вопрос не ждал лишнюю секунду.
  */
 function warmUp() {
-  const providerId = settings.provider || 'cloudflare';
-  const provider = providerConfig(providerId);
-  const apiKey = provider.noKey ? '' : (settings.keys && settings.keys[providerId]) || '';
+  const ai = aiConfig();
 
-  if (providerId === 'opencode' && apiKey) {
+  // OpenCode Go: тихий запрос к /models прогревает TLS и воркер модели.
+  if (ai.apiKey && /opencode\.ai/i.test(ai.baseUrl)) {
     net
-      .fetch(`${resolveBaseUrl(provider, settings.cloudflareAccount)}/models`, {
+      .fetch(`${ai.baseUrl.replace(/\/+$/, '')}/models`, {
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${ai.apiKey}`,
           'User-Agent': 'Pomogator/0.1.0 (overlay assistant)',
         },
       })
       .catch(() => {});
   }
 
+  const stt = settings.stt || {};
+
   // Локальный движок держит модель в памяти: поднимаем заранее, чтобы первый
   // вопрос не ждал ещё и загрузку модели.
-  if (settings.sttProvider === 'local') {
+  if (stt.mode === 'local') {
     localStt.ensureServer(settings.localSttModel, settings.localSttGpu).catch(() => {});
     return;
   }
 
-  const sttProvider = settings.sttProvider || 'cloudflare';
-  const sttKey = (settings.keys && settings.keys[sttProvider]) || '';
-  if (sttProvider === 'cloudflare' && sttKey && settings.cloudflareAccount) {
+  // Cloudflare поднимает воркер Whisper только на первом запросе — греем его
+  // тихим WAV, чтобы первая фраза распознавалась без паузы.
+  const sttKey = (settings.keys && settings.keys.stt) || '';
+  if (stt.format === 'cloudflare' && sttKey) {
     transcribe({
-      providerId: 'cloudflare',
+      providerId: 'custom',
+      format: 'cloudflare',
+      baseUrl: stt.baseUrl,
+      accountId: stt.accountId,
       apiKey: sttKey,
-      accountId: settings.cloudflareAccount,
-      model: settings.sttModel,
+      model: stt.model,
       audio: silentWav(),
-      language: 'ru',
+      language: stt.language || 'ru',
       initialPrompt: '',
     }).catch(() => {});
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Горячие клавиши                                                    */
-/* ------------------------------------------------------------------ */
-
-/*  Распознавание речи: резервная модель                               */
-/* ------------------------------------------------------------------ */
-
-// Если основная модель отвалится посреди разговора (квота, сбой, снятие
-// с поддержки), работаем на резервной в том же аккаунте: Whisper тратит
-// в 10 раз меньше нейронов и переживает лимиты Nova.
-const STT_FALLBACK = {
-  '@cf/deepgram/nova-3': '@cf/openai/whisper-large-v3-turbo',
-  '@cf/openai/whisper-large-v3-turbo': '@cf/openai/whisper',
-};
-
-let sttActiveModel = '';
-
-function sttModelLabel(model) {
-  if (model === '@cf/deepgram/nova-3') return 'Nova';
-  if (model === '@cf/openai/whisper-large-v3-turbo') return 'Whisper';
-  if (model === '@cf/openai/whisper') return 'Whisper v3';
-  return String(model || '');
-}
-
-function runStt(model, audio, signal) {
-  const sttId = settings.sttProvider === 'local' ? 'cloudflare' : settings.sttProvider || 'cloudflare';
-  const cfg = sttConfig(sttId);
-  const keyId = cfg.keyProvider || sttId;
-  const apiKey = (settings.keys && settings.keys[keyId]) || '';
-
-  return transcribe({
-    providerId: sttId,
-    apiKey,
-    accountId: settings.cloudflareAccount || '',
-    model,
-    audio,
-    language: settings.language === 'en' ? 'en' : 'ru',
-    initialPrompt: speechPrompt(settings),
-    signal,
-  });
-}
-
-/** Облачная цепочка: основная модель → резервная, с одним повтором. */
-async function cloudTranscribe(audio, controller, startModel) {
-  const sttId = settings.sttProvider === 'local' ? 'cloudflare' : settings.sttProvider || 'cloudflare';
-  const cfg = sttConfig(sttId);
-  const keyId = cfg.keyProvider || sttId;
-  const apiKey = (settings.keys && settings.keys[keyId]) || '';
-
-  if (!apiKey) throw new Error(`Нет ключа для распознавания (${cfg.label})`);
-  if (cfg.needsAccount && !settings.cloudflareAccount) {
-    throw new Error('Не указан Account ID Cloudflare');
-  }
-
-  const primary = startModel;
-  const fallback = STT_FALLBACK[primary];
-
-  try {
-    return { ok: true, text: await runStt(primary, audio, controller.signal), model: primary };
-  } catch (err) {
-    if (err.name === 'AbortError') return { ok: false, aborted: true };
-    if (!fallback) return { ok: false, error: err.message };
-  }
-
-  // Одна повторная попытка: чаще всего это сетевой сбой, а не отказ модели.
-  try {
-    await delay(350, controller.signal);
-  } catch {
-    return { ok: false, aborted: true };
-  }
-
-  try {
-    return { ok: true, text: await runStt(primary, audio, controller.signal), model: primary };
-  } catch (retryErr) {
-    if (retryErr.name === 'AbortError') return { ok: false, aborted: true };
-
-    sttActiveModel = fallback;
-    console.warn('[stt] переключаюсь на резерв:', fallback, retryErr.message);
-    sendToOverlay('stt:notice', `Распознавание переключилось на ${sttModelLabel(fallback)}`);
-
-    try {
-      return { ok: true, text: await runStt(fallback, audio, controller.signal), model: fallback };
-    } catch (finalErr) {
-      if (finalErr.name === 'AbortError') return { ok: false, aborted: true };
-      return { ok: false, error: finalErr.message };
-    }
   }
 }
 
@@ -1478,8 +1390,6 @@ function registerIpc() {
     const prevClickThrough = !!settings.clickThrough;
     const prevWidth = Number(settings.overlayWidth) || 980;
     const prevHeight = Number(settings.overlayHeight) || 232;
-    const prevSttModel = settings.sttModel;
-    const prevSttProvider = settings.sttProvider;
     const prevLocalModel = settings.localSttModel;
     const prevLocalGpu = !!settings.localSttGpu;
 
@@ -1516,11 +1426,8 @@ function registerIpc() {
     }
     persist();
     if (JSON.stringify(settings.hotkeys) !== prevHotkeys) hotkeys.register();
-    // Сменили модель распознавания — снова пробуем её, а не резервную.
-    if (settings.sttModel !== prevSttModel) sttActiveModel = '';
     // Сменили локальную модель или источник — перезапустим движок лениво.
     if (
-      settings.sttProvider !== prevSttProvider ||
       settings.localSttModel !== prevLocalModel ||
       !!settings.localSttGpu !== prevLocalGpu
     ) {

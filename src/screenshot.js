@@ -35,9 +35,6 @@ function createScreenshotService({
   getSettings,
   sendToOverlay,
   streamChat,
-  providerConfig,
-  visionModel,
-  cloudChat,
 }) {
   let captureWins = [];
   let captureShots = new Map();
@@ -316,19 +313,6 @@ function createScreenshotService({
         ],
       },
     ];
-
-    // Облако Помогатора: скриншот уходит на наш сервер, ключи не нужны.
-    if (cloudChat) {
-      try {
-        const text = await cloudChat(messages, 900);
-        if (text != null) {
-          if (text) sendToOverlay('llm:delta', text);
-          return;
-        }
-      } catch (err) {
-        console.warn('[vision] облако не ответило:', err.message);
-      }
-    }
 
     if (!baseUrl) throw new Error('Не указан адрес API модели');
     if (!model) throw new Error('Не указана модель');
