@@ -38,6 +38,11 @@ let settings = {
   job: '',
   contextPrompt: '',
   terms: '',
+  profiles: [
+    { id: 'profile-1', name: 'Профиль 1', contextPrompt: '', terms: '', resume: '', job: '' },
+    { id: 'profile-2', name: 'Профиль 2', contextPrompt: '', terms: '', resume: '', job: '' },
+  ],
+  activeProfile: 'profile-1',
   localSttModel: 'base',
   localSttGpu: false,
   autoUpdateDownload: false,
@@ -56,6 +61,7 @@ let autoUpdateDownloading = false;
 let availableUpdate = null;
 
 const LOCAL_MODEL_IDS = ['base', 'small', 'medium', 'large'];
+const PROFILE_FIELDS = ['contextPrompt', 'terms', 'resume', 'job'];
 
 function localModelId(value) {
   return LOCAL_MODEL_IDS.includes(value) ? value : 'base';
@@ -203,6 +209,131 @@ function rangeLabel(key) {
   else if (key === 'overlayFontScale') out.textContent = `${Math.round(value * 100)}%`;
   else if (key === 'overlayWidth' || key === 'overlayHeight') out.textContent = `${value} px`;
   else out.textContent = String(value);
+}
+
+function profileList() {
+  return Array.isArray(settings.profiles) ? settings.profiles : [];
+}
+
+function currentProfile() {
+  const list = profileList();
+  return list.find((profile) => profile.id === settings.activeProfile) || list[0] || null;
+}
+
+function applyProfileToForm(profile) {
+  if (!profile) return;
+
+  for (const key of PROFILE_FIELDS) {
+    settings[key] = String(profile[key] || '');
+    const input = $(key);
+    if (input) input.value = settings[key];
+  }
+}
+
+function saveProfileFromForm() {
+  const profile = currentProfile();
+  if (!profile) return;
+
+  for (const key of PROFILE_FIELDS) {
+    const input = $(key);
+    if (input) settings[key] = input.value;
+    profile[key] = String(settings[key] || '');
+  }
+}
+
+function nextProfileName(list) {
+  const names = new Set(list.map((profile) => profile.name));
+  let index = list.length + 1;
+
+  while (names.has(`Профиль ${index}`)) index += 1;
+  return `Профиль ${index}`;
+}
+
+function nextProfileId() {
+  return `profile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function renderProfiles() {
+  const tabs = $('profileTabs');
+  if (!tabs) return;
+
+  const list = profileList();
+  const active = currentProfile();
+  const activeId = active ? active.id : '';
+  tabs.innerHTML = '';
+
+  for (const profile of list) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `profile-tab${profile.id === activeId ? ' active' : ''}`;
+    button.dataset.profileId = profile.id;
+    button.textContent = profile.name || 'Профиль';
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-selected', String(profile.id === activeId));
+    tabs.appendChild(button);
+  }
+
+  const remove = $('profileDeleteBtn');
+  if (remove) remove.disabled = list.length <= 1;
+}
+
+function selectProfile(id) {
+  if (!id || id === settings.activeProfile) return;
+
+  saveProfileFromForm();
+  const profile = profileList().find((item) => item.id === id);
+  if (!profile) return;
+
+  settings.activeProfile = profile.id;
+  applyProfileToForm(profile);
+  renderProfiles();
+  scheduleSave();
+}
+
+function addProfile() {
+  saveProfileFromForm();
+  const list = profileList();
+  const profile = {
+    id: nextProfileId(),
+    name: nextProfileName(list),
+    contextPrompt: '',
+    terms: '',
+    resume: '',
+    job: '',
+  };
+
+  settings.profiles = [...list, profile];
+  settings.activeProfile = profile.id;
+  applyProfileToForm(profile);
+  renderProfiles();
+  scheduleSave();
+
+  if ($('contextPrompt')) $('contextPrompt').focus();
+}
+
+function removeProfile() {
+  const list = profileList();
+  if (list.length <= 1) return;
+
+  saveProfileFromForm();
+  const active = currentProfile();
+  if (!active) return;
+
+  if (
+    !window.confirm(
+      `Удалить «${active.name}»? Контекст, словарь, резюме и требования будут потеряны.`
+    )
+  ) {
+    return;
+  }
+
+  const index = list.findIndex((profile) => profile.id === active.id);
+  settings.profiles = list.filter((profile) => profile.id !== active.id);
+  const next = settings.profiles[Math.min(index, settings.profiles.length - 1)];
+  settings.activeProfile = next.id;
+  applyProfileToForm(next);
+  renderProfiles();
+  scheduleSave();
 }
 
 function fillSimpleFields() {
@@ -1070,6 +1201,7 @@ function renderSupport() {
 }
 
 function fill() {
+  renderProfiles();
   renderAi();
   renderDisplays();
   renderStt();
@@ -1484,9 +1616,25 @@ function bind() {
         settings[key] = input.value;
       }
 
+      if (PROFILE_FIELDS.includes(key)) {
+        const profile = currentProfile();
+        if (profile) profile[key] = String(settings[key] || '');
+      }
+
       scheduleSave();
     });
   });
+
+  const profileTabs = $('profileTabs');
+  if (profileTabs) {
+    profileTabs.addEventListener('click', (event) => {
+      const tab = event.target.closest('[data-profile-id]');
+      if (tab) selectProfile(tab.dataset.profileId);
+    });
+  }
+
+  if ($('profileAddBtn')) $('profileAddBtn').addEventListener('click', addProfile);
+  if ($('profileDeleteBtn')) $('profileDeleteBtn').addEventListener('click', removeProfile);
 
   $('toggleAiKey').addEventListener('click', () => {
     const input = $('aiKey');

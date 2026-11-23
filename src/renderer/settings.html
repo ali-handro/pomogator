@@ -328,6 +328,19 @@
 
         <section class="card">
           <h2>Контекст</h2>
+          <div class="profile-bar">
+            <div class="profile-tabs" id="profileTabs" role="tablist" aria-label="Профили"></div>
+            <div class="profile-actions">
+              <button type="button" class="ghost test-btn" id="profileAddBtn">+ Профиль</button>
+              <button type="button" class="ghost test-btn" id="profileDeleteBtn">
+                Удалить
+              </button>
+            </div>
+          </div>
+          <span class="hint">
+            У каждого профиля свой контекст, словарь терминов, резюме и требования.
+            Переключайтесь между профилями, если программой пользуются несколько человек.
+          </span>
           <label class="field">
             <span class="label">Контекст разговора (промт)</span>
             <textarea

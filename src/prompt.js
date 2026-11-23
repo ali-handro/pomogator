@@ -1,5 +1,7 @@
 'use strict';
 
+const { profileFields } = require('./profiles');
+
 const STYLES = {
   concise: '3 коротких пункта, каждый не длиннее 12 слов, каждый с новой строки.',
   star: '3 блока с новой строки: ситуация → действие → результат. Всего не больше 45 слов.',
@@ -16,10 +18,11 @@ const LANGUAGES = {
 function buildMessages({ question, settings, history = [] }) {
   const style = STYLES[settings.style] || STYLES.concise;
   const language = LANGUAGES[settings.language] || LANGUAGES.ru;
-  const resume = (settings.resume || '').trim();
-  const job = (settings.job || '').trim();
-  const context = (settings.contextPrompt || '').trim().slice(0, 4000);
-  const terms = (settings.terms || '').trim().slice(0, 1000);
+  const profile = profileFields(settings);
+  const resume = profile.resume.trim();
+  const job = profile.job.trim();
+  const context = profile.contextPrompt.trim().slice(0, 4000);
+  const terms = profile.terms.trim().slice(0, 1000);
   const words = Number(settings.answerWords) || 45;
 
   const system = [

@@ -44,6 +44,42 @@ test('словарь терминов попадает в системное с�
   assert.match(messages[0].content, /Selenium, Cucumber, Page Object/);
 });
 
+test('в системный промпт попадает контекст активного профиля', () => {
+  const messages = buildMessages({
+    question: 'Что такое consumer group?',
+    settings: {
+      activeProfile: 'qa',
+      contextPrompt: 'Старый контекст',
+      profiles: [
+        {
+          id: 'dev',
+          name: 'Профиль 1',
+          contextPrompt: 'Собеседование разработчика',
+          terms: 'React',
+          resume: 'Frontend',
+          job: 'Вакансия frontend',
+        },
+        {
+          id: 'qa',
+          name: 'Профиль 2',
+          contextPrompt: 'Собеседование QA',
+          terms: 'Kafka, Cucumber',
+          resume: '6 лет тестирования',
+          job: 'Вакансия QA',
+        },
+      ],
+    },
+  });
+
+  const system = messages[0].content;
+  assert.match(system, /Собеседование QA/);
+  assert.match(system, /Kafka, Cucumber/);
+  assert.match(system, /6 лет тестирования/);
+  assert.match(system, /Вакансия QA/);
+  assert.doesNotMatch(system, /Собеседование разработчика/);
+  assert.doesNotMatch(system, /Старый контекст/);
+});
+
 test('история ограничена последними четырьмя парами', () => {
   const history = Array.from({ length: 6 }, (_, index) => ({
     question: `Вопрос ${index}`,

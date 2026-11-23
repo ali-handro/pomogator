@@ -36,6 +36,13 @@ const diagnostics = require('./diagnostics');
 
 logs.install();
 const { buildMessages } = require('./prompt');
+const {
+  PROFILE_FIELDS,
+  profileFields,
+  normalizeProfiles,
+  syncProfileFromFields,
+  syncFieldsFromProfile,
+} = require('./profiles');
 
 const APP_ROOT = path.join(__dirname, '..');
 const isDev = process.argv.includes('--dev');
@@ -112,6 +119,12 @@ const DEFAULT_SETTINGS = {
   job: '',
   contextPrompt: '',
   terms: '',
+  /* у каждого профиля свой контекст, словарь, резюме и требования */
+  profiles: [
+    { id: 'profile-1', name: 'Профиль 1', contextPrompt: '', terms: '', resume: '', job: '' },
+    { id: 'profile-2', name: 'Профиль 2', contextPrompt: '', terms: '', resume: '', job: '' },
+  ],
+  activeProfile: 'profile-1',
   /* распознавание речи */
   sttProvider: 'cloudflare', // устарело
   sttModel: '@cf/deepgram/nova-3', // устарело
@@ -281,6 +294,10 @@ function loadSettings() {
     settings.ai = { ...DEFAULT_SETTINGS.ai, ...(settings.ai || {}) };
     settings.stt = { ...DEFAULT_SETTINGS.stt, ...(settings.stt || {}) };
 
+    const hadProfiles = Array.isArray(parsed.profiles) && parsed.profiles.length > 0;
+    const profilesChanged = normalizeProfiles(settings, hadProfiles);
+    syncFieldsFromProfile(settings);
+
     // Приложение больше не работает через сервер: убираем старые настройки облака.
     let cloudRemoved = false;
     if ('cloudMode' in settings) {
@@ -306,7 +323,7 @@ function loadSettings() {
     }
 
     // Старый файл с ключами в открытом виде или без новых полей — пересохраняем.
-    if (legacyKeys || !parsed.ai || !parsed.stt) persist();
+    if (profilesChanged || legacyKeys || !parsed.ai || !parsed.stt) persist();
   } catch {
     settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   }
@@ -338,8 +355,9 @@ function needsSetup() {
 
 /** Подсказка для распознавания: контекст разговора + словарь терминов. */
 function speechPrompt(settings) {
-  const context = String(settings.contextPrompt || '').trim();
-  const terms = String(settings.terms || '').trim();
+  const profile = profileFields(settings);
+  const context = profile.contextPrompt.trim();
+  const terms = profile.terms.trim();
   return [context, terms ? `Термины: ${terms}` : '']
     .filter(Boolean)
     .join('\n')
@@ -1424,6 +1442,17 @@ function registerIpc() {
         ])
       );
     }
+
+    const hadProfilePatch = Object.prototype.hasOwnProperty.call(incoming, 'profiles');
+    normalizeProfiles(settings, Array.isArray(settings.profiles) && settings.profiles.length > 0);
+    if (!hadProfilePatch) {
+      const legacyChanged = PROFILE_FIELDS.some((key) =>
+        Object.prototype.hasOwnProperty.call(incoming, key)
+      );
+      if (legacyChanged) syncProfileFromFields(settings);
+    }
+    syncFieldsFromProfile(settings);
+
     persist();
     if (JSON.stringify(settings.hotkeys) !== prevHotkeys) hotkeys.register();
     // Сменили локальную модель или источник — перезапустим движок лениво.
