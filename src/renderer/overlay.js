@@ -59,7 +59,7 @@ let askStartedAt = 0;
 /*  История ответов                                                    */
 /* ------------------------------------------------------------------ */
 
-const MAX_HISTORY = 40;
+const MAX_HISTORY = 500;
 const answerHistory = [];
 let historyIndex = -1;
 let activeEntry = null;
